@@ -13,6 +13,9 @@ public static class DbInitializer
         // Always ensure admin user exists with correct credentials
         await EnsureAdminUserAsync(context);
 
+        // Update categories hierarchy unconditionally (ensures new structure exists)
+        await UpdateCategoriesAsync(context);
+
         // Only seed initial data if no users exist (excluding the admin we just created/updated)
         var userCount = await context.Users.CountAsync();
         if (userCount > 1)
@@ -44,155 +47,204 @@ public static class DbInitializer
         testUser.PasswordHash = passwordHasher.HashPassword(testUser, "Test123!");
 
         await context.Users.AddRangeAsync(adminUser, testUser);
-        var electronics = new Category
-        {
-            Id = Guid.NewGuid(),
-            Name = "Electronics",
-            Slug = "electronics",
-            Description = "Electronic devices and gadgets",
-            IsActive = true,
-            SortOrder = 1,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var clothing = new Category
-        {
-            Id = Guid.NewGuid(),
-            Name = "Clothing",
-            Slug = "clothing",
-            Description = "Fashion and apparel",
-            IsActive = true,
-            SortOrder = 2,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await context.Categories.AddRangeAsync(electronics, clothing);
-
+        
         // Seed Filters
-        var brandFilter = new Filter
+        var brandFilter = await context.Filters.FirstOrDefaultAsync(f => f.Slug == "brand");
+        if (brandFilter == null)
         {
-            Id = Guid.NewGuid(),
-            Name = "Brand",
-            Slug = "brand",
-            Type = FilterType.Select,
-            IsActive = true,
-            SortOrder = 1,
-            CreatedAt = DateTime.UtcNow
-        };
+            brandFilter = new Filter
+            {
+                Id = Guid.NewGuid(),
+                Name = "Brand",
+                Slug = "brand",
+                Type = FilterType.Select,
+                IsActive = true,
+                SortOrder = 1,
+                CreatedAt = DateTime.UtcNow
+            };
+            await context.Filters.AddAsync(brandFilter);
+        }
 
-        var sizeFilter = new Filter
+        var sizeFilter = await context.Filters.FirstOrDefaultAsync(f => f.Slug == "size");
+        if (sizeFilter == null)
         {
-            Id = Guid.NewGuid(),
-            Name = "Size",
-            Slug = "size",
-            Type = FilterType.Select,
-            IsActive = true,
-            SortOrder = 2,
-            CreatedAt = DateTime.UtcNow
-        };
+            sizeFilter = new Filter
+            {
+                Id = Guid.NewGuid(),
+                Name = "Size",
+                Slug = "size",
+                Type = FilterType.Select,
+                IsActive = true,
+                SortOrder = 2,
+                CreatedAt = DateTime.UtcNow
+            };
+            await context.Filters.AddAsync(sizeFilter);
+        }
 
-        var priceFilter = new Filter
+        var priceFilter = await context.Filters.FirstOrDefaultAsync(f => f.Slug == "price-range");
+        if (priceFilter == null)
         {
-            Id = Guid.NewGuid(),
-            Name = "Price Range",
-            Slug = "price-range",
-            Type = FilterType.Range,
-            IsActive = true,
-            SortOrder = 3,
-            CreatedAt = DateTime.UtcNow
-        };
+            priceFilter = new Filter
+            {
+                Id = Guid.NewGuid(),
+                Name = "Price Range",
+                Slug = "price-range",
+                Type = FilterType.Range,
+                IsActive = true,
+                SortOrder = 3,
+                CreatedAt = DateTime.UtcNow
+            };
+            await context.Filters.AddAsync(priceFilter);
+        }
 
-        await context.Filters.AddRangeAsync(brandFilter, sizeFilter, priceFilter);
-
-        // Seed Filter Options
-        var brandOptions = new[]
-        {
-            new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "apple", DisplayName = "Apple", IsActive = true, SortOrder = 1, CreatedAt = DateTime.UtcNow },
-            new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "samsung", DisplayName = "Samsung", IsActive = true, SortOrder = 2, CreatedAt = DateTime.UtcNow },
-            new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "nike", DisplayName = "Nike", IsActive = true, SortOrder = 3, CreatedAt = DateTime.UtcNow }
-        };
-
-        var sizeOptions = new[]
-        {
-            new FilterOption { Id = Guid.NewGuid(), FilterId = sizeFilter.Id, Value = "s", DisplayName = "Small", IsActive = true, SortOrder = 1, CreatedAt = DateTime.UtcNow },
-            new FilterOption { Id = Guid.NewGuid(), FilterId = sizeFilter.Id, Value = "m", DisplayName = "Medium", IsActive = true, SortOrder = 2, CreatedAt = DateTime.UtcNow },
-            new FilterOption { Id = Guid.NewGuid(), FilterId = sizeFilter.Id, Value = "l", DisplayName = "Large", IsActive = true, SortOrder = 3, CreatedAt = DateTime.UtcNow }
-        };
-
-        await context.FilterOptions.AddRangeAsync(brandOptions);
-        await context.FilterOptions.AddRangeAsync(sizeOptions);
-
-        // Seed Sample Products
-        var product1 = new Product
-        {
-            Id = Guid.NewGuid(),
-            Name = "iPhone 15 Pro",
-            Slug = "iphone-15-pro",
-            Description = "Latest iPhone with advanced features",
-            ShortDescription = "Premium smartphone",
-            Sku = "IPH15PRO001",
-            CategoryId = electronics.Id,
-            IsActive = true,
-            IsHotDeal = true,
-            StockQuantity = 50,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        var product2 = new Product
-        {
-            Id = Guid.NewGuid(),
-            Name = "Nike Air Max",
-            Slug = "nike-air-max",
-            Description = "Comfortable running shoes",
-            ShortDescription = "Sports shoes",
-            Sku = "NIKE001",
-            CategoryId = clothing.Id,
-            IsActive = true,
-            IsHotDeal = false,
-            StockQuantity = 100,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await context.Products.AddRangeAsync(product1, product2);
-
-        // Seed Product Prices (Role-based)
-        var product1Prices = new[]
-        {
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product1.Id, UserRole = UserRole.NormalUser, Price = 1300m, CreatedAt = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product1.Id, UserRole = UserRole.Retail, Price = 1200m, CreatedAt = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product1.Id, UserRole = UserRole.Wholesale, Price = 1000m, CreatedAt = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product1.Id, UserRole = UserRole.VIP, Price = 950m, DiscountedPrice = 900m, DiscountPercentage = 5.26m, CreatedAt = DateTime.UtcNow }
-        };
-
-        var product2Prices = new[]
-        {
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product2.Id, UserRole = UserRole.NormalUser, Price = 180m, CreatedAt = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product2.Id, UserRole = UserRole.Retail, Price = 150m, CreatedAt = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product2.Id, UserRole = UserRole.Wholesale, Price = 120m, CreatedAt = DateTime.UtcNow },
-            new ProductPrice { Id = Guid.NewGuid(), ProductId = product2.Id, UserRole = UserRole.VIP, Price = 100m, CreatedAt = DateTime.UtcNow }
-        };
-
-        await context.ProductPrices.AddRangeAsync(product1Prices);
-        await context.ProductPrices.AddRangeAsync(product2Prices);
-
-        // Seed Banner
-        var heroBanner = new Banner
-        {
-            Id = Guid.NewGuid(),
-            Title = "Welcome to GunayBeauty",
-            ImageUrl = "/uploads/banners/c2148601-15d5-4d95-9c30-1541b6d668da.png",
-            LinkUrl = "/",
-            ButtonText = "Shop Now",
-            Type = BannerType.Hero,
-            IsActive = true,
-            SortOrder = 1,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await context.Banners.AddAsync(heroBanner);
-
-        // Save all changes
         await context.SaveChangesAsync();
+
+        // Seed Filter Options if not exist
+        if (!await context.FilterOptions.AnyAsync(fo => fo.FilterId == brandFilter.Id))
+        {
+            var brandOptions = new[]
+            {
+                new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "apple", DisplayName = "Apple", IsActive = true, SortOrder = 1, CreatedAt = DateTime.UtcNow },
+                new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "samsung", DisplayName = "Samsung", IsActive = true, SortOrder = 2, CreatedAt = DateTime.UtcNow },
+                new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "nike", DisplayName = "Nike", IsActive = true, SortOrder = 3, CreatedAt = DateTime.UtcNow },
+                new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "charlotte-tilbury", DisplayName = "Charlotte Tilbury", IsActive = true, SortOrder = 4, CreatedAt = DateTime.UtcNow },
+                new FilterOption { Id = Guid.NewGuid(), FilterId = brandFilter.Id, Value = "mac", DisplayName = "MAC", IsActive = true, SortOrder = 5, CreatedAt = DateTime.UtcNow }
+            };
+            await context.FilterOptions.AddRangeAsync(brandOptions);
+        }
+
+        if (!await context.FilterOptions.AnyAsync(fo => fo.FilterId == sizeFilter.Id))
+        {
+            var sizeOptions = new[]
+            {
+                new FilterOption { Id = Guid.NewGuid(), FilterId = sizeFilter.Id, Value = "s", DisplayName = "Small", IsActive = true, SortOrder = 1, CreatedAt = DateTime.UtcNow },
+                new FilterOption { Id = Guid.NewGuid(), FilterId = sizeFilter.Id, Value = "m", DisplayName = "Medium", IsActive = true, SortOrder = 2, CreatedAt = DateTime.UtcNow },
+                new FilterOption { Id = Guid.NewGuid(), FilterId = sizeFilter.Id, Value = "l", DisplayName = "Large", IsActive = true, SortOrder = 3, CreatedAt = DateTime.UtcNow }
+            };
+            await context.FilterOptions.AddRangeAsync(sizeOptions);
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task UpdateCategoriesAsync(SmartTeamDbContext context)
+    {
+        // 1. Skin Care
+        var skinCare = await EnsureCategoryAsync(context, "Skin Care", null, 1);
+        await EnsureCategoryAsync(context, "Acne Treatments & Kits", skinCare.Id, 1);
+        await EnsureCategoryAsync(context, "Anti-Aging Skin Care", skinCare.Id, 2);
+        await EnsureCategoryAsync(context, "Compressed Skin Care Mask Sheets", skinCare.Id, 3);
+        await EnsureCategoryAsync(context, "Eye Creams", skinCare.Id, 4);
+        await EnsureCategoryAsync(context, "Face Moisturizers", skinCare.Id, 5);
+        await EnsureCategoryAsync(context, "Face Serums", skinCare.Id, 6);
+        await EnsureCategoryAsync(context, "Facial Cleansers", skinCare.Id, 7);
+        await EnsureCategoryAsync(context, "Lip Balms & Treatments", skinCare.Id, 8);
+        await EnsureCategoryAsync(context, "Skin Care Masks & Peels", skinCare.Id, 9);
+        await EnsureCategoryAsync(context, "Lotions & Moisturizers", skinCare.Id, 10);
+        await EnsureCategoryAsync(context, "Sunscreen", skinCare.Id, 11);
+        await EnsureCategoryAsync(context, "Toners & Astringents", skinCare.Id, 12);
+        
+        var deodorantsParent = await EnsureCategoryAsync(context, "Deodorants & Anti-Perspirant", skinCare.Id, 13);
+        await EnsureCategoryAsync(context, "Deodorants", deodorantsParent.Id, 1);
+
+        // 2. Cosmetics
+        var cosmetics = await EnsureCategoryAsync(context, "Cosmetics", null, 2);
+        
+        // Face Makeup
+        var faceMakeup = await EnsureCategoryAsync(context, "Face Makeup", cosmetics.Id, 1);
+        await EnsureCategoryAsync(context, "Foundation", faceMakeup.Id, 1);
+        await EnsureCategoryAsync(context, "Concealer", faceMakeup.Id, 2);
+        await EnsureCategoryAsync(context, "Primers", faceMakeup.Id, 3);
+        await EnsureCategoryAsync(context, "Setting Powder", faceMakeup.Id, 4);
+        await EnsureCategoryAsync(context, "BB & CC Creams", faceMakeup.Id, 5);
+        await EnsureCategoryAsync(context, "Setting Sprays", faceMakeup.Id, 6);
+
+        // Eye Makeup
+        var eyeMakeup = await EnsureCategoryAsync(context, "Eye Makeup", cosmetics.Id, 2);
+        await EnsureCategoryAsync(context, "Eyeshadow", eyeMakeup.Id, 1);
+        await EnsureCategoryAsync(context, "Mascara", eyeMakeup.Id, 2);
+        await EnsureCategoryAsync(context, "Eyeliner", eyeMakeup.Id, 3);
+        await EnsureCategoryAsync(context, "Eyebrows", eyeMakeup.Id, 4);
+        await EnsureCategoryAsync(context, "Eye Primers", eyeMakeup.Id, 5);
+
+        // Lip Makeup
+        var lipMakeup = await EnsureCategoryAsync(context, "Lip Makeup", cosmetics.Id, 3);
+        await EnsureCategoryAsync(context, "Lipstick", lipMakeup.Id, 1);
+        await EnsureCategoryAsync(context, "Lip Gloss & Oils", lipMakeup.Id, 2);
+        await EnsureCategoryAsync(context, "Lip Liner", lipMakeup.Id, 3);
+        await EnsureCategoryAsync(context, "Liquid Lipstick", lipMakeup.Id, 4);
+        await EnsureCategoryAsync(context, "Lip Care", lipMakeup.Id, 5);
+
+        // Cheek & Glow
+        var cheekGlow = await EnsureCategoryAsync(context, "Cheek & Glow", cosmetics.Id, 4);
+        await EnsureCategoryAsync(context, "Blush", cheekGlow.Id, 1);
+        await EnsureCategoryAsync(context, "Bronzer", cheekGlow.Id, 2);
+        await EnsureCategoryAsync(context, "Highlighter", cheekGlow.Id, 3);
+        await EnsureCategoryAsync(context, "Contour", cheekGlow.Id, 4);
+
+        // Tools & Brushes
+        var toolsBrushes = await EnsureCategoryAsync(context, "Tools & Brushes", cosmetics.Id, 5);
+        await EnsureCategoryAsync(context, "Makeup Brushes", toolsBrushes.Id, 1);
+        await EnsureCategoryAsync(context, "Sponges & Blenders", toolsBrushes.Id, 2);
+        await EnsureCategoryAsync(context, "Eyelash Curlers", toolsBrushes.Id, 3);
+        await EnsureCategoryAsync(context, "Brush Cleaners", toolsBrushes.Id, 4);
+        await EnsureCategoryAsync(context, "Makeup Bags", toolsBrushes.Id, 5);
+
+        // 3. Gift Sets
+        await EnsureCategoryAsync(context, "Gift Sets", null, 3);
+
+        // 4. Perfumes
+        await EnsureCategoryAsync(context, "Perfumes", null, 4);
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task<Category> EnsureCategoryAsync(SmartTeamDbContext context, string name, Guid? parentId, int sortOrder)
+    {
+        var slug = GenerateSlug(name);
+        var category = await context.Categories
+            .FirstOrDefaultAsync(c => c.Slug == slug && c.ParentCategoryId == parentId);
+
+        if (category == null)
+        {
+            category = new Category
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                Slug = slug,
+                ParentCategoryId = parentId,
+                IsActive = true,
+                SortOrder = sortOrder,
+                CreatedAt = DateTime.UtcNow
+            };
+            await context.Categories.AddAsync(category);
+            // Save immediately to generate ID for children
+            await context.SaveChangesAsync(); 
+        }
+        else
+        {
+            // Update existing if check passes (to correct sort order or parent if name matches)
+            // But here we mainly ensure existence.
+            if (category.SortOrder != sortOrder)
+            {
+                category.SortOrder = sortOrder;
+                context.Categories.Update(category);
+                await context.SaveChangesAsync();
+            }
+        }
+        
+        return category;
+    }
+
+    private static string GenerateSlug(string name)
+    {
+        return name.ToLowerInvariant()
+            .Replace(" & ", "-and-")
+            .Replace("&", "and")
+            .Replace(" ", "-")
+            .Replace("'", "")
+            .Replace(",", "")
+            .Replace("--", "-");
     }
 
     private static async Task EnsureAdminUserAsync(SmartTeamDbContext context)
