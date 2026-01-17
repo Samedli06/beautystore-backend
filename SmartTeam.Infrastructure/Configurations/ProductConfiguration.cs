@@ -57,10 +57,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasForeignKey(p => p.CategoryId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasMany(p => p.Prices)
-            .WithOne(pp => pp.Product)
-            .HasForeignKey(pp => pp.ProductId)
-            .OnDelete(DeleteBehavior.Cascade);
+
 
         builder.HasMany(p => p.Images)
             .WithOne(pi => pi.Product)
@@ -84,39 +81,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
     }
 }
 
-public class ProductPriceConfiguration : IEntityTypeConfiguration<ProductPrice>
-{
-    public void Configure(EntityTypeBuilder<ProductPrice> builder)
-    {
-        builder.HasKey(pp => pp.Id);
 
-        builder.Property(pp => pp.UserRole)
-            .HasConversion<string>()
-            .HasMaxLength(50);
-
-        builder.Property(pp => pp.Price)
-            .HasColumnType("decimal(18,2)")
-            .IsRequired();
-
-        builder.Property(pp => pp.DiscountedPrice)
-            .HasColumnType("decimal(18,2)");
-
-        builder.Property(pp => pp.DiscountPercentage)
-            .HasColumnType("decimal(5,2)");
-
-        builder.Property(pp => pp.CreatedAt)
-            .HasDefaultValueSql("GETUTCDATE()");
-
-        // Unique constraint: one price per product per role
-        builder.HasIndex(pp => new { pp.ProductId, pp.UserRole })
-            .IsUnique();
-
-        builder.HasOne(pp => pp.Product)
-            .WithMany(p => p.Prices)
-            .HasForeignKey(pp => pp.ProductId)
-            .OnDelete(DeleteBehavior.Cascade);
-    }
-}
 
 public class ProductImageConfiguration : IEntityTypeConfiguration<ProductImage>
 {

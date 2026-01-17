@@ -42,6 +42,12 @@ public class AddToCartDto
     public int Quantity { get; set; } = 1;
 }
 
+public class AddToCartRequestDto
+{
+    public string ProductId { get; set; } = string.Empty;
+    public int Quantity { get; set; } = 1;
+}
+
 public class UpdateCartItemDto
 {
     public int Quantity { get; set; }

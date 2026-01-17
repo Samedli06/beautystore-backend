@@ -45,9 +45,6 @@ public class UserStatisticsDto
     public int TotalUsers { get; set; }
     public int AdminUsers { get; set; }
     public int NormalUsers { get; set; }
-    public int RetailUsers { get; set; }
-    public int WholesaleUsers { get; set; }
-    public int VipUsers { get; set; }
 }
 
 public class UserSearchDto

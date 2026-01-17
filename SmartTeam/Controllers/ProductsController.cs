@@ -244,26 +244,7 @@ public class ProductsController : ControllerBase
         return Ok(product);
     }
 
-    /// <summary>
-    /// Get product with all role-based prices (Admin only)
-    /// </summary>
-    [HttpGet("{id:guid}/all-prices")]
-    [Authorize(Roles = "Admin")]
-    [ProducesResponseType(typeof(ProductWithAllPricesDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<ProductWithAllPricesDto>> GetProductWithAllPrices(Guid id, CancellationToken cancellationToken)
-    {
-        var product = await _productService.GetProductWithAllPricesAsync(id, cancellationToken);
-        
-        if (product == null)
-        {
-            return NotFound();
-        }
-
-        return Ok(product);
-    }
+    // GetProductWithAllPrices removed as it is no longer needed with unified pricing.
 
     /// <summary>
     /// Search products with role-based pricing
@@ -852,52 +833,7 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>
-    /// Update product prices for all roles (Admin only)
-    /// </summary>
-    [HttpPut("{id:guid}/prices")]
-    [Authorize(Roles = "Admin")]
-    [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ProductDto>> UpdateProductPrices(Guid id, [FromBody] List<CreateProductPriceDto> prices, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var product = await _productService.UpdateProductPricesAsync(id, prices, cancellationToken);
-            return Ok(product);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }
 
-    /// <summary>
-    /// Add default prices to all products that don't have any pricing (Admin only)
-    /// </summary>
-    [HttpPost("add-default-prices")]
-    [Authorize(Roles = "Admin")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> AddDefaultPrices(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var updatedProductsCount = await _productService.AddDefaultPricesToProductsWithoutPricesAsync(cancellationToken);
-            return Ok(new { 
-                message = $"Default prices added to {updatedProductsCount} products",
-                updatedProductsCount = updatedProductsCount
-            });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(ex.Message);
-        }
-    }
 
     private UserRole? GetCurrentUserRole()
     {

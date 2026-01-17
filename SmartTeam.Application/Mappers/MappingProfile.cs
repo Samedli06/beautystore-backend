@@ -36,8 +36,7 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => Guid.NewGuid()))
             .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => GenerateSlug(src.Name)))
             .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
-            .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => true))
-            .ForMember(dest => dest.Prices, opt => opt.Ignore()); // Ignore prices - we'll add them manually
+            .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => true));
         CreateMap<UpdateProductDto, Product>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
             .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => GenerateSlug(src.Name)))
@@ -45,7 +44,6 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.ImageUrl, opt => opt.Ignore()) // Don't overwrite image URL
             .ForMember(dest => dest.DetailImageUrl, opt => opt.Ignore()) // Don't overwrite detail image URL
-            .ForMember(dest => dest.Prices, opt => opt.Ignore()) // Handle prices separately
             .ForMember(dest => dest.Images, opt => opt.Ignore())
             .ForMember(dest => dest.Category, opt => opt.Ignore())
             .ForMember(dest => dest.Brand, opt => opt.Ignore())
@@ -53,15 +51,6 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.Specifications, opt => opt.Ignore())
             .ForMember(dest => dest.CartItems, opt => opt.Ignore())
             .ForMember(dest => dest.Favorites, opt => opt.Ignore());
-        CreateMap<Product, ProductWithAllPricesDto>()
-            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
-            .ForMember(dest => dest.AllPrices, opt => opt.Ignore()); // Will be mapped manually in service
-
-        // ProductPrice mappings
-        CreateMap<ProductPrice, ProductPriceDto>();
-        CreateMap<CreateProductPriceDto, ProductPrice>()
-            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => Guid.NewGuid()))
-            .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow));
 
         // ProductImage mappings
         CreateMap<ProductImage, ProductImageDto>();

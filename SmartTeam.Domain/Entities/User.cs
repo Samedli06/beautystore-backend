@@ -21,8 +21,5 @@ public class User
 public enum UserRole
 {
     Admin = 0,
-    NormalUser = 1,
-    Retail = 2,
-    Wholesale = 3,
-    VIP = 4
+    NormalUser = 1
 }

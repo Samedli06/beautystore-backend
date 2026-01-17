@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using SmartTeam.Application.DTOs;
 using SmartTeam.Application.Services;
 using System.Security.Claims;
+using System.Linq;
+using System.Net;
 
 namespace SmartTeam.Controllers;
 
@@ -69,10 +71,63 @@ public class CartController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<CartDto>> AddToCart([FromBody] AddToCartDto addToCartDto, CancellationToken cancellationToken)
+    public async Task<ActionResult<CartDto>> AddToCart([FromBody] AddToCartRequestDto? requestDto, CancellationToken cancellationToken)
     {
         try
         {
+            if (requestDto == null)
+            {
+                return BadRequest("Request body is required.");
+            }
+
+            // Convert string ProductId to Guid - try multiple formats and cleaning
+            var productIdString = requestDto.ProductId?.Trim();
+            
+            // Clean invisible characters
+            if (!string.IsNullOrEmpty(productIdString))
+            {
+                productIdString = productIdString.Replace("\u200E", "")
+                                               .Replace("\u200F", "")
+                                               .Replace("\u202A", "")
+                                               .Replace("\u202B", "")
+                                               .Replace("\u202C", "")
+                                               .Replace("\u202D", "")
+                                               .Replace("\u202E", "");
+                
+                // If it looks like it has an extra character at the end (e.g. 37 chars)
+                if (productIdString.Length == 37)
+                {
+                    var validChars = productIdString.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray();
+                    if (validChars.Length > 36)
+                    {
+                        // Take only the first 36 valid chars if it's still too long
+                        productIdString = new string(validChars.Take(36).ToArray());
+                    }
+                    else
+                    {
+                        productIdString = new string(validChars);
+                    }
+                }
+            }
+            
+            if (!Guid.TryParse(productIdString, out var productId))
+            {
+                // Try alternate formats
+                if (!Guid.TryParseExact(productIdString, "D", out productId) &&
+                    !Guid.TryParseExact(productIdString, "N", out productId) &&
+                    !Guid.TryParseExact(productIdString, "B", out productId) &&
+                    !Guid.TryParseExact(productIdString, "P", out productId))
+                {
+                    return BadRequest($"Invalid ProductId format: '{requestDto.ProductId}'");
+                }
+            }
+
+            var addToCartDto = new AddToCartDto
+            {
+                ProductId = productId,
+                Quantity = requestDto.Quantity
+            };
+
             Guid? userId = null;
             
             // Try to get user ID if authenticated, but don't require it
@@ -106,7 +161,7 @@ public class CartController : ControllerBase
     /// Update cart item quantity
     /// </summary>
     [HttpPut("items/{cartItemId:guid}")]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -115,7 +170,9 @@ public class CartController : ControllerBase
     {
         try
         {
-            var userId = GetCurrentUserId();
+            Guid? userId = null;
+            try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+            
             var cart = await _cartService.UpdateCartItemAsync(userId, cartItemId, updateCartItemDto, cancellationToken);
             return Ok(cart);
         }
@@ -133,7 +190,7 @@ public class CartController : ControllerBase
     /// Remove item from cart
     /// </summary>
     [HttpDelete("items/{cartItemId:guid}")]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -142,7 +199,9 @@ public class CartController : ControllerBase
     {
         try
         {
-            var userId = GetCurrentUserId();
+            Guid? userId = null;
+            try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+            
             var cart = await _cartService.RemoveFromCartAsync(userId, cartItemId, cancellationToken);
             return Ok(cart);
         }
@@ -156,12 +215,14 @@ public class CartController : ControllerBase
     /// Clear all items from cart
     /// </summary>
     [HttpDelete]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ClearCart(CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        Guid? userId = null;
+        try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+        
         await _cartService.ClearCartAsync(userId, cancellationToken);
         return Ok(new { message = "Cart cleared successfully" });
     }
@@ -334,12 +395,14 @@ public class CartController : ControllerBase
     /// Get the count of items in user's cart
     /// </summary>
     [HttpGet("count")]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(int), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<int>> GetCartCount(CancellationToken cancellationToken)
     {
-        var userId = GetCurrentUserId();
+        Guid? userId = null;
+        try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+        
         var count = await _cartService.GetCartCountAsync(userId, cancellationToken);
         return Ok(count);
     }
@@ -348,7 +411,7 @@ public class CartController : ControllerBase
     /// Apply promo code to cart
     /// </summary>
     [HttpPost("apply-promo")]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -356,7 +419,9 @@ public class CartController : ControllerBase
     {
         try
         {
-            var userId = GetCurrentUserId();
+            Guid? userId = null;
+            try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+            
             var cart = await _cartService.ApplyPromoCodeAsync(userId, applyPromoCodeDto.PromoCode, cancellationToken);
             return Ok(cart);
         }
@@ -374,7 +439,7 @@ public class CartController : ControllerBase
     /// Remove applied promo code from cart
     /// </summary>
     [HttpDelete("promo")]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -382,7 +447,9 @@ public class CartController : ControllerBase
     {
         try
         {
-            var userId = GetCurrentUserId();
+            Guid? userId = null;
+            try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+            
             var cart = await _cartService.RemovePromoCodeAsync(userId, cancellationToken);
             return Ok(cart);
         }

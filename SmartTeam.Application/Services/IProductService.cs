@@ -22,7 +22,7 @@ public interface IProductService
     Task<ProductDto> UpdateProductWithImageAsync(Guid id, UpdateProductDto updateProductDto, IFormFile? imageFile, CancellationToken cancellationToken = default);
     Task<ProductDto> UpdateProductWithFilesAsync(Guid id, UpdateProductDto updateProductDto, IFormFile? imageFile, IFormFile[]? detailImageFiles, IFormFile? pdfFile, Guid? userId, CancellationToken cancellationToken = default);
     Task<bool> DeleteProductAsync(Guid id, CancellationToken cancellationToken = default);
-    Task<ProductDto> UpdateProductPricesAsync(Guid id, List<CreateProductPriceDto> prices, CancellationToken cancellationToken = default);
+
     Task<IEnumerable<ProductListDto>> SearchProductsAsync(string searchTerm, UserRole? userRole = null, CancellationToken cancellationToken = default);
     Task<GlobalSearchResultDto> GlobalSearchAsync(string searchTerm, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default);
     Task<ProductDto> UploadProductImageAsync(Guid productId, IFormFile imageFile, CancellationToken cancellationToken = default);
@@ -32,9 +32,7 @@ public interface IProductService
     Task<bool> DeleteProductDetailImageByIdAsync(Guid imageId, CancellationToken cancellationToken = default);
     Task<IEnumerable<ProductStockDto>> GetProductStockStatusAsync(CancellationToken cancellationToken = default);
     Task<StockSummaryDto> GetStockSummaryAsync(CancellationToken cancellationToken = default);
-    Task<ProductWithAllPricesDto?> GetProductWithAllPricesAsync(Guid id, CancellationToken cancellationToken = default);
     Task<RecommendedProductsDto> GetRecommendedProductsAsync(RecommendationRequestDto? request = null, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default);
-    Task<int> AddDefaultPricesToProductsWithoutPricesAsync(CancellationToken cancellationToken = default);
     Task<ProductSpecificationDto?> GetProductSpecificationsAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ProductSpecificationDto> CreateProductSpecificationsAsync(CreateProductSpecificationDto createDto, CancellationToken cancellationToken = default);
     Task<ProductSpecificationDto> UpdateProductSpecificationsAsync(Guid productId, UpdateProductSpecificationDto updateDto, CancellationToken cancellationToken = default);

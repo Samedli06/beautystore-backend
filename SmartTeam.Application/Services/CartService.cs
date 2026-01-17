@@ -51,7 +51,6 @@ public class CartService : ICartService
 
     public async Task<CartDto> AddToCartAsync(Guid? userId, AddToCartDto addToCartDto, CancellationToken cancellationToken = default)
     {
-        
         // Validate product exists and is active
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(addToCartDto.ProductId, cancellationToken);
         if (product == null || !product.IsActive)
@@ -65,35 +64,13 @@ public class CartService : ICartService
             throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
         }
 
-        decimal unitPrice = 0;
+        // Use discounted price if available, otherwise regular price
+        decimal unitPrice = product.DiscountedPrice ?? product.Price;
 
-        // Get user's role for pricing if user is authenticated
-        if (userId.HasValue)
+        if (unitPrice <= 0)
         {
-            var user = await _unitOfWork.Repository<User>().GetByIdAsync(userId.Value, cancellationToken);
-            if (user != null)
-            {
-                // Get role-based price
-                var productPrice = await _unitOfWork.Repository<ProductPrice>()
-                    .FirstOrDefaultAsync(pp => pp.ProductId == addToCartDto.ProductId && pp.UserRole == user.Role, cancellationToken);
-
-                unitPrice = productPrice?.DiscountedPrice ?? productPrice?.Price ?? 0;
-            }
-        }
-
-        // If no user or no role-based price found, use default price
-        if (unitPrice == 0)
-        {
-            var defaultProductPrice = await _unitOfWork.Repository<ProductPrice>()
-                .FirstOrDefaultAsync(pp => pp.ProductId == addToCartDto.ProductId && pp.UserRole == UserRole.NormalUser, cancellationToken);
-            
-            unitPrice = defaultProductPrice?.DiscountedPrice ?? defaultProductPrice?.Price ?? 0;
-        }
-
-        // If still no price found, throw an error
-        if (unitPrice == 0)
-        {
-            throw new InvalidOperationException("No pricing information found for this product.");
+             // Fallback or error if price is not set correctly (though database should enforce it)
+             throw new InvalidOperationException("Product price is invalid.");
         }
 
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);
@@ -114,6 +91,7 @@ public class CartService : ICartService
             }
 
             existingItem.Quantity = newQuantity;
+            existingItem.UnitPrice = unitPrice; // Update price in case it changed
             existingItem.UpdatedAt = DateTime.UtcNow;
             _unitOfWork.Repository<CartItem>().Update(existingItem);
         }
@@ -140,7 +118,7 @@ public class CartService : ICartService
         return await MapCartToDto(cart, cancellationToken);
     }
 
-    public async Task<CartDto> UpdateCartItemAsync(Guid userId, Guid cartItemId, UpdateCartItemDto updateCartItemDto, CancellationToken cancellationToken = default)
+    public async Task<CartDto> UpdateCartItemAsync(Guid? userId, Guid cartItemId, UpdateCartItemDto updateCartItemDto, CancellationToken cancellationToken = default)
     {
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);
         
@@ -178,7 +156,7 @@ public class CartService : ICartService
         return await MapCartToDto(cart, cancellationToken);
     }
 
-    public async Task<CartDto> RemoveFromCartAsync(Guid userId, Guid cartItemId, CancellationToken cancellationToken = default)
+    public async Task<CartDto> RemoveFromCartAsync(Guid? userId, Guid cartItemId, CancellationToken cancellationToken = default)
     {
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);
         
@@ -199,10 +177,9 @@ public class CartService : ICartService
         return await MapCartToDto(cart, cancellationToken);
     }
 
-    public async Task<bool> ClearCartAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<bool> ClearCartAsync(Guid? userId, CancellationToken cancellationToken = default)
     {
-        var cart = await _unitOfWork.Repository<Cart>()
-            .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
+        var cart = await GetOrCreateCartAsync(userId, cancellationToken);
 
         if (cart == null)
         {
@@ -291,51 +268,8 @@ public class CartService : ICartService
             throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
         }
 
-        decimal unitPrice = 0;
-        decimal totalPrice = 0;
-
-        // Get user's role for pricing if user is authenticated
-        if (userId.HasValue)
-        {
-            var user = await _unitOfWork.Repository<User>().GetByIdAsync(userId.Value, cancellationToken);
-            if (user != null)
-            {
-                // Get role-based price
-                var productPrice = await _unitOfWork.Repository<ProductPrice>()
-                    .FirstOrDefaultAsync(pp => pp.ProductId == quickOrderDto.ProductId && pp.UserRole == user.Role, cancellationToken);
-
-                unitPrice = productPrice?.DiscountedPrice ?? productPrice?.Price ?? 0;
-            }
-        }
-
-        // If no user or no role-based price found, use default price
-        if (unitPrice == 0)
-        {
-            var defaultProductPrice = await _unitOfWork.Repository<ProductPrice>()
-                .FirstOrDefaultAsync(pp => pp.ProductId == quickOrderDto.ProductId && pp.UserRole == UserRole.NormalUser, cancellationToken);
-            
-            // Debug: Log pricing information
-            Console.WriteLine($"Default ProductPrice found: {defaultProductPrice != null}");
-            if (defaultProductPrice != null)
-            {
-                Console.WriteLine($"Regular Price: {defaultProductPrice.Price}");
-                Console.WriteLine($"Discounted Price: {defaultProductPrice.DiscountedPrice}");
-            }
-            
-            // Use discounted price if available, otherwise use regular price
-            unitPrice = defaultProductPrice?.DiscountedPrice ?? defaultProductPrice?.Price ?? 0;
-        }
-
-        // If still no price found, throw an error
-        if (unitPrice == 0)
-        {
-            throw new InvalidOperationException("No pricing information found for this product.");
-        }
-
-        totalPrice = unitPrice * quickOrderDto.Quantity;
-
-        // Get product category for display
-        var category = await _unitOfWork.Repository<Category>().GetByIdAsync(product.CategoryId, cancellationToken);
+        decimal unitPrice = product.DiscountedPrice ?? product.Price;
+        decimal totalPrice = unitPrice * quickOrderDto.Quantity;
 
         // Create a single cart item for this product
         var cartItem = new CartItemDto
@@ -454,19 +388,6 @@ public class CartService : ICartService
         var cartItems = await _unitOfWork.Repository<CartItem>()
             .FindAsync(ci => ci.CartId == cart.Id, cancellationToken);
 
-        // Get user's role for discount calculation
-        UserRole userRole = UserRole.NormalUser;
-        try
-        {
-            var user = await _unitOfWork.Repository<User>().GetByIdAsync(cart.UserId, cancellationToken);
-            userRole = user?.Role ?? UserRole.NormalUser;
-        }
-        catch
-        {
-            // If user not found (anonymous user), use default role
-            userRole = UserRole.NormalUser;
-        }
-
         var cartItemDtos = new List<CartItemDto>();
         decimal totalDiscount = 0;
         decimal totalPriceBeforeDiscount = 0;
@@ -492,33 +413,28 @@ public class CartService : ICartService
                               primaryImage?.ImageUrl ?? 
                               product.ImageUrl;
 
-                // Get product price for user role to calculate discount
-                var productPrice = await _unitOfWork.Repository<ProductPrice>()
-                    .FirstOrDefaultAsync(pp => pp.ProductId == product.Id && pp.UserRole == userRole, cancellationToken);
-
-                decimal originalPrice = 0;
+                decimal originalPrice = product.Price;
                 decimal itemDiscount = 0;
 
-                if (productPrice != null)
+                // Calculate discount per item: (original price - discounted price) * quantity
+                if (product.DiscountedPrice.HasValue)
                 {
-                    originalPrice = productPrice.Price;
-                    
-                    // Calculate discount per item: (original price - discounted price) * quantity
-                    if (productPrice.DiscountedPrice.HasValue)
-                    {
-                        var discountedPrice = productPrice.DiscountedPrice.Value;
-                        itemDiscount = (originalPrice - discountedPrice) * item.Quantity;
-                    }
-                }
-                else
-                {
-                    // If no role-based price found, use the unit price as both original and final
-                    originalPrice = item.UnitPrice;
+                    var discountedPrice = product.DiscountedPrice.Value;
+                    itemDiscount = (originalPrice - discountedPrice) * item.Quantity;
                 }
 
                 // Add to totals
                 totalPriceBeforeDiscount += originalPrice * item.Quantity;
                 totalDiscount += itemDiscount;
+
+                // Calculate total price for this item line (using unit price which should match discount if applicable)
+                // However, unit price in cart item is stored at time of add. Logic above updates it on re-add.
+                // Discrepancy check: Should we use stored unit price or current product price?
+                // Stored unit price reflects price at time of adding to cart.
+                // But for display "Original Price" context, we use current product price.
+                
+                // Let's use stored unit price for the total calculation to be safe with what's in DB
+                // But update "original price" context for UI to show savings.
 
                 cartItemDtos.Add(new CartItemDto
                 {
@@ -567,7 +483,7 @@ public class CartService : ICartService
             UserId = cart.UserId,
             Items = cartItemDtos,
             SubTotal = subTotalAmount,
-            TotalAmount = subTotalAmount,
+            TotalAmount = subTotalAmount, // SubTotal is often same as TotalAmount before extra fees
             TotalPriceBeforeDiscount = totalPriceBeforeDiscount,
             TotalDiscount = totalDiscount,
             TotalQuantity = cartItemDtos.Sum(i => i.Quantity),
@@ -580,7 +496,7 @@ public class CartService : ICartService
         };
     }
 
-    public async Task<int> GetCartCountAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<int> GetCartCountAsync(Guid? userId, CancellationToken cancellationToken = default)
     {
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);
         
@@ -603,10 +519,9 @@ public class CartService : ICartService
         return activeCount;
     }
 
-    public async Task<CartDto> ApplyPromoCodeAsync(Guid userId, string promoCode, CancellationToken cancellationToken = default)
+    public async Task<CartDto> ApplyPromoCodeAsync(Guid? userId, string promoCode, CancellationToken cancellationToken = default)
     {
-        var cart = await _unitOfWork.Repository<Cart>()
-            .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
+        var cart = await GetOrCreateCartAsync(userId, cancellationToken);
 
         if (cart == null)
         {
@@ -648,10 +563,9 @@ public class CartService : ICartService
         return await MapCartToDto(cart, cancellationToken);
     }
 
-    public async Task<CartDto> RemovePromoCodeAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<CartDto> RemovePromoCodeAsync(Guid? userId, CancellationToken cancellationToken = default)
     {
-        var cart = await _unitOfWork.Repository<Cart>()
-            .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
+        var cart = await GetOrCreateCartAsync(userId, cancellationToken);
 
         if (cart == null)
         {

@@ -266,10 +266,7 @@ public class AdminController : ControllerBase
         {
             TotalUsers = usersList.Count,
             AdminUsers = usersList.Count(u => u.Role == UserRole.Admin),
-            NormalUsers = usersList.Count(u => u.Role == UserRole.NormalUser),
-            RetailUsers = usersList.Count(u => u.Role == UserRole.Retail),
-            WholesaleUsers = usersList.Count(u => u.Role == UserRole.Wholesale),
-            VipUsers = usersList.Count(u => u.Role == UserRole.VIP)
+            NormalUsers = usersList.Count(u => u.Role == UserRole.NormalUser)
         };
 
         return Ok(statistics);

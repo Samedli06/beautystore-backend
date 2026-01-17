@@ -97,6 +97,51 @@ public static class DbInitializer
             await context.Filters.AddAsync(priceFilter);
         }
 
+        // Seed Sample Products
+        var electronics = await context.Categories.FirstOrDefaultAsync(c => c.Name == "Deodorants");
+        var clothing = await context.Categories.FirstOrDefaultAsync(c => c.Name == "Lipstick");
+
+        if (electronics != null && clothing != null)
+        {
+             var product1 = new Product
+            {
+                Id = Guid.NewGuid(),
+                Name = "Nivea Men Deodorant",
+                Slug = "nivea-men-deodorant",
+                Description = "24h protection",
+                ShortDescription = "Deodorant for men",
+                Sku = "NIVMEN001",
+                CategoryId = electronics.Id,
+                IsActive = true,
+                IsHotDeal = true,
+                StockQuantity = 50,
+                Price = 12m,
+                DiscountedPrice = 10m,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var product2 = new Product
+            {
+                Id = Guid.NewGuid(),
+                Name = "Mac Lipstick Red",
+                Slug = "mac-lipstick-red",
+                Description = "Classic red lipstick",
+                ShortDescription = "Red Lipstick",
+                Sku = "MACRED001",
+                CategoryId = clothing.Id,
+                IsActive = true,
+                IsHotDeal = false,
+                StockQuantity = 100,
+                Price = 45m,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            if (!await context.Products.AnyAsync()) 
+            {
+                 await context.Products.AddRangeAsync(product1, product2);
+            }
+        }
+
         await context.SaveChangesAsync();
 
         // Seed Filter Options if not exist

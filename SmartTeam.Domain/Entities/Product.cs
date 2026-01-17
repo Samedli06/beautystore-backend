@@ -24,8 +24,9 @@ public class Product
     public Guid? BrandId { get; set; }
     public Brand? Brand { get; set; }
     
-    // Role-based pricing
-    public ICollection<ProductPrice> Prices { get; set; } = new List<ProductPrice>();
+    // Pricing
+    public decimal Price { get; set; }
+    public decimal? DiscountedPrice { get; set; }
     
     // Images
     public ICollection<ProductImage> Images { get; set; } = new List<ProductImage>();
@@ -39,19 +40,6 @@ public class Product
     // Navigation properties
     public ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
     public ICollection<UserFavorite> Favorites { get; set; } = new List<UserFavorite>();
-}
-
-public class ProductPrice
-{
-    public Guid Id { get; set; }
-    public Guid ProductId { get; set; }
-    public Product Product { get; set; } = null!;
-    public UserRole UserRole { get; set; }
-    public decimal Price { get; set; }
-    public decimal? DiscountedPrice { get; set; }
-    public decimal? DiscountPercentage { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
 }
 
 public class ProductImage

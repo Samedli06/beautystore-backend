@@ -24,7 +24,8 @@ public class ProductDto
     public string? BrandName { get; set; }
     public string? ImageUrl { get; set; }
     public string? DetailImageUrl { get; set; }
-    public List<ProductPriceDto> Prices { get; set; } = new();
+    public decimal Price { get; set; }
+    public decimal? DiscountedPrice { get; set; }
     public List<ProductImageDto> Images { get; set; } = new();
     public bool IsFavorite { get; set; } = false;
     public DateTime CreatedAt { get; set; }
@@ -48,22 +49,12 @@ public class ProductListDto
     public string? SubCategorySlug { get; set; }
     public Guid? BrandId { get; set; }
     public string? BrandName { get; set; }
-    public decimal? CurrentPrice { get; set; }
-    public decimal? OriginalPrice { get; set; }
-    public decimal? DiscountPercentage { get; set; }
+    public decimal Price { get; set; }
+    public decimal? DiscountedPrice { get; set; }
     public string? PrimaryImageUrl { get; set; }
     public bool IsFavorite { get; set; } = false;
     public List<ProductFilterDto> Filters { get; set; } = new();
     public DateTime CreatedAt { get; set; }
-}
-
-public class ProductPriceDto
-{
-    public Guid Id { get; set; }
-    public UserRole UserRole { get; set; }
-    public decimal Price { get; set; }
-    public decimal? DiscountedPrice { get; set; }
-    public decimal? DiscountPercentage { get; set; }
 }
 
 public class ProductImageDto
@@ -87,7 +78,8 @@ public class CreateProductDto
     public int StockQuantity { get; set; }
     public Guid CategoryId { get; set; }
     public Guid? BrandId { get; set; }
-    public List<CreateProductPriceDto> Prices { get; set; } = new();
+    public decimal Price { get; set; }
+    public decimal? DiscountedPrice { get; set; }
 }
 
 public class CreateProductWithImageDto
@@ -100,15 +92,8 @@ public class CreateProductWithImageDto
     public int StockQuantity { get; set; }
     public Guid CategoryId { get; set; }
     public Guid? BrandId { get; set; }
-    public List<CreateProductPriceDto> Prices { get; set; } = new();
-}
-
-public class CreateProductPriceDto
-{
-    public UserRole UserRole { get; set; }
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
-    public decimal? DiscountPercentage { get; set; }
 }
 
 public class UpdateProductDto
@@ -122,7 +107,8 @@ public class UpdateProductDto
     public int StockQuantity { get; set; }
     public Guid CategoryId { get; set; }
     public Guid? BrandId { get; set; }
-    public List<CreateProductPriceDto>? Prices { get; set; }
+    public decimal Price { get; set; }
+    public decimal? DiscountedPrice { get; set; }
     public List<string>? DetailImageUrls { get; set; } // For tracking existing detail images
 }
 
@@ -133,26 +119,7 @@ public enum StockStatus
     InStock
 }
 
-public class ProductWithAllPricesDto
-{
-    public Guid Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Slug { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public string? ShortDescription { get; set; }
-    public string Sku { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
-    public bool IsHotDeal { get; set; }
-    public int StockQuantity { get; set; }
-    public Guid CategoryId { get; set; }
-    public string CategoryName { get; set; } = string.Empty;
-    public string? ImageUrl { get; set; }
-    public string? DetailImageUrl { get; set; }
-    public List<ProductPriceDto> AllPrices { get; set; } = new(); // All role-based prices
-    public List<ProductImageDto> Images { get; set; } = new();
-    public DateTime CreatedAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
-}
+// ProductWithAllPricesDto removed as it is no longer needed with unified pricing.
 
 public class ProductStockDto
 {

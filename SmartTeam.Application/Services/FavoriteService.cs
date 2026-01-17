@@ -59,13 +59,12 @@ public class FavoriteService : IFavoriteService
 
         // Get the favorite with product details
         var favoriteWithProduct = await _unitOfWork.Repository<UserFavorite>()
-            .FirstOrDefaultWithIncludesAsync(f => f.Id == favorite.Id, f => f.Product, f => f.Product.Category, f => f.Product.Prices);
+            .FirstOrDefaultWithIncludesAsync(f => f.Id == favorite.Id, f => f.Product, f => f.Product.Category);
 
         var favoriteDto = _mapper.Map<FavoriteDto>(favoriteWithProduct);
         
         if (favoriteDto.Product != null)
         {
-            await ApplyRoleBasedPricingToProduct(favoriteDto.Product, userRole, cancellationToken);
             favoriteDto.Product.IsFavorite = true;
         }
 
@@ -107,8 +106,7 @@ public class FavoriteService : IFavoriteService
                 .FirstOrDefaultWithIncludesAsync(
                     f => f.Id == favorite.Id, 
                     f => f.Product, 
-                    f => f.Product.Category, 
-                    f => f.Product.Prices);
+                    f => f.Product.Category);
             
             if (favoriteWithProduct?.Product != null && favoriteWithProduct.Product.IsActive)
             {
@@ -136,7 +134,6 @@ public class FavoriteService : IFavoriteService
         {
             if (favoriteDto.Product != null)
             {
-                await ApplyRoleBasedPricingToProduct(favoriteDto.Product, userRole, cancellationToken);
                 favoriteDto.Product.IsFavorite = true;
             }
         }
@@ -255,55 +252,5 @@ public class FavoriteService : IFavoriteService
         return true;
     }
 
-    private async Task ApplyRoleBasedPricingToProduct(ProductListDto product, UserRole? userRole, CancellationToken cancellationToken)
-    {
-        if (!userRole.HasValue)
-        {
-            userRole = UserRole.NormalUser;
-        }
 
-        var productPrice = await _unitOfWork.Repository<ProductPrice>()
-            .FirstOrDefaultAsync(pp => pp.ProductId == product.Id && pp.UserRole == userRole.Value, cancellationToken);
-
-        if (productPrice != null)
-        {
-            product.CurrentPrice = productPrice.DiscountedPrice ?? productPrice.Price;
-            product.OriginalPrice = productPrice.Price;
-            product.DiscountPercentage = productPrice.DiscountPercentage;
-        }
-        else
-        {
-            // Fallback: Try to find any price for this product
-            var anyPrice = await _unitOfWork.Repository<ProductPrice>()
-                .FirstOrDefaultAsync(pp => pp.ProductId == product.Id, cancellationToken);
-            
-            if (anyPrice != null)
-            {
-                product.CurrentPrice = anyPrice.DiscountedPrice ?? anyPrice.Price;
-                product.OriginalPrice = anyPrice.Price;
-                product.DiscountPercentage = anyPrice.DiscountPercentage;
-            }
-            else
-            {
-                // No prices exist - provide default values based on role
-                var defaultPrice = GetDefaultPriceForRole(userRole.Value);
-                product.CurrentPrice = defaultPrice;
-                product.OriginalPrice = defaultPrice;
-                product.DiscountPercentage = null;
-            }
-        }
-    }
-
-    private static decimal GetDefaultPriceForRole(UserRole userRole)
-    {
-        return userRole switch
-        {
-            UserRole.Admin => 100.00m,
-            UserRole.VIP => 120.00m,
-            UserRole.Wholesale => 150.00m,
-            UserRole.Retail => 180.00m,
-            UserRole.NormalUser => 200.00m,
-            _ => 200.00m
-        };
-    }
 }

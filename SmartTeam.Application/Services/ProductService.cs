@@ -27,61 +27,59 @@ public class ProductService : IProductService
 
     public async Task<IEnumerable<ProductListDto>> GetAllProductsAsync(UserRole? userRole = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var activeProducts = products.Where(p => p.IsActive);
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(activeProducts);
-        return ApplyRoleBasedPricingToListFromProducts(productDtos, activeProducts, userRole);
+        return productDtos;
     }
 
     public async Task<IEnumerable<ProductListDto>> GetAllProductsAsync(UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var activeProducts = products.Where(p => p.IsActive);
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(activeProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, activeProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return pricedProducts;
+        return productDtos;
     }
 
     public async Task<IEnumerable<ProductListDto>> GetProductsByCategoryAsync(Guid categoryId, UserRole? userRole = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var categoryIds = await GetCategoryIdsIncludingSubcategories(categoryId, cancellationToken);
         var filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(filteredProducts);
         
-        return ApplyRoleBasedPricingToListFromProducts(productDtos, filteredProducts, userRole);
+        return productDtos;
     }
 
     public async Task<IEnumerable<ProductListDto>> GetProductsByCategoryAsync(Guid categoryId, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var categoryIds = await GetCategoryIdsIncludingSubcategories(categoryId, cancellationToken);
         var filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(filteredProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, filteredProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return pricedProducts;
+        return productDtos;
     }
 
     public async Task<IEnumerable<ProductListDto>> GetProductsByCategorySlugAsync(string categorySlug, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
@@ -106,7 +104,7 @@ public class ProductService : IProductService
 
     public async Task<IEnumerable<ProductListDto>> GetHotDealsAsync(UserRole? userRole = null, int? limit = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var hotDeals = products.Where(p => p.IsHotDeal && p.IsActive);
 
         // Apply limit if specified
@@ -116,10 +114,9 @@ public class ProductService : IProductService
         }
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(hotDeals);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, hotDeals, userRole);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return pricedProducts;
+        return productDtos;
     }
 
     public async Task<IEnumerable<ProductListDto>> GetProductsByBrandAsync(string brandSlug, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
@@ -132,21 +129,20 @@ public class ProductService : IProductService
             return new List<ProductListDto>();
 
         // Get products for this brand
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Brand);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         var brandProducts = products.Where(p => p.BrandId == brand.Id && p.IsActive);
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(brandProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, brandProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return pricedProducts;
+        return productDtos;
     }
 
     public async Task<ProductDto?> GetProductByIdAsync(Guid id, UserRole? userRole = null, CancellationToken cancellationToken = default)
@@ -179,9 +175,8 @@ public class ProductService : IProductService
         
         productDto.Images = _mapper.Map<List<ProductImageDto>>(images.OrderBy(i => i.SortOrder));
         
-        var result = await ApplyRoleBasedPricing(productDto, userRole, cancellationToken);
-        await PopulateCategoryBreadcrumbsForSingleProduct(result, cancellationToken);
-        return result;
+        await PopulateCategoryBreadcrumbsForSingleProduct(productDto, cancellationToken);
+        return productDto;
     }
 
     public async Task<ProductDto?> GetProductByIdAsync(Guid id, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
@@ -214,15 +209,13 @@ public class ProductService : IProductService
         
         productDto.Images = _mapper.Map<List<ProductImageDto>>(images.OrderBy(i => i.SortOrder));
         
-        var result = await ApplyRoleBasedPricing(productDto, userRole, cancellationToken);
-        
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProduct(result, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProduct(productDto, userId.Value, cancellationToken);
         }
         
-        await PopulateCategoryBreadcrumbsForSingleProduct(result, cancellationToken);
-        return result;
+        await PopulateCategoryBreadcrumbsForSingleProduct(productDto, cancellationToken);
+        return productDto;
     }
 
     public async Task<ProductDto?> GetProductBySlugAsync(string slug, UserRole? userRole = null, CancellationToken cancellationToken = default)
@@ -256,9 +249,8 @@ public class ProductService : IProductService
         
         productDto.Images = _mapper.Map<List<ProductImageDto>>(images.OrderBy(i => i.SortOrder));
         
-        var result = await ApplyRoleBasedPricing(productDto, userRole, cancellationToken);
-        await PopulateCategoryBreadcrumbsForSingleProduct(result, cancellationToken);
-        return result;
+        await PopulateCategoryBreadcrumbsForSingleProduct(productDto, cancellationToken);
+        return productDto;
     }
 
     public async Task<ProductDto> CreateProductAsync(CreateProductDto createProductDto, CancellationToken cancellationToken = default)
@@ -288,27 +280,8 @@ public class ProductService : IProductService
             throw new InvalidOperationException("A product with this SKU already exists.");
         }
 
-        var duplicateRoles = createProductDto.Prices
-            .GroupBy(p => p.UserRole)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        if (duplicateRoles.Any())
-        {
-            throw new InvalidOperationException($"Duplicate user roles found: {string.Join(", ", duplicateRoles)}");
-        }
-
-        // Validate that discounted price is not higher than original price
-        foreach (var price in createProductDto.Prices)
-        {
-            if (price.DiscountedPrice.HasValue && price.DiscountedPrice.Value > price.Price)
-            {
-                throw new InvalidOperationException($"Discounted price ({price.DiscountedPrice.Value}) cannot be higher than original price ({price.Price}) for role {price.UserRole}.");
-            }
-        }
-
         var product = _mapper.Map<Product>(createProductDto);
+        product.Slug = GenerateSlug(createProductDto.Name);
         
         // Ensure BrandId is set if provided
         if (createProductDto.BrandId.HasValue)
@@ -317,13 +290,6 @@ public class ProductService : IProductService
         }
         
         await _unitOfWork.Repository<Product>().AddAsync(product, cancellationToken);
-        foreach (var priceDto in createProductDto.Prices)
-        {
-            var productPrice = _mapper.Map<ProductPrice>(priceDto);
-            productPrice.ProductId = product.Id;
-            await _unitOfWork.Repository<ProductPrice>().AddAsync(productPrice, cancellationToken);
-        }
-
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return _mapper.Map<ProductDto>(product);
@@ -362,26 +328,6 @@ public class ProductService : IProductService
             throw new InvalidOperationException("A product with this SKU already exists.");
         }
 
-        var duplicateRoles = createProductDto.Prices
-            .GroupBy(p => p.UserRole)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        if (duplicateRoles.Any())
-        {
-            throw new InvalidOperationException($"Duplicate user roles found: {string.Join(", ", duplicateRoles)}");
-        }
-
-        // Validate that discounted price is not higher than original price
-        foreach (var price in createProductDto.Prices)
-        {
-            if (price.DiscountedPrice.HasValue && price.DiscountedPrice.Value > price.Price)
-            {
-                throw new InvalidOperationException($"Discounted price ({price.DiscountedPrice.Value}) cannot be higher than original price ({price.Price}) for role {price.UserRole}.");
-            }
-        }
-
         var product = new Product
         {
             Id = Guid.NewGuid(),
@@ -395,23 +341,10 @@ public class ProductService : IProductService
             CategoryId = createProductDto.CategoryId,
             BrandId = createProductDto.BrandId, // Add BrandId
             IsActive = true,
+            Price = createProductDto.Price,
+            DiscountedPrice = createProductDto.DiscountedPrice,
             CreatedAt = DateTime.UtcNow
         };
-
-        foreach (var priceDto in createProductDto.Prices)
-        {
-            var productPrice = new ProductPrice
-            {
-                Id = Guid.NewGuid(),
-                ProductId = product.Id,
-                UserRole = priceDto.UserRole,
-                Price = priceDto.Price,
-                DiscountedPrice = priceDto.DiscountedPrice,
-                DiscountPercentage = priceDto.DiscountPercentage,
-                CreatedAt = DateTime.UtcNow
-            };
-            product.Prices.Add(productPrice);
-        }
 
         // Upload image
         var imageUrl = await _fileUploadService.UploadFileAsync(imageFile, "products");
@@ -423,7 +356,7 @@ public class ProductService : IProductService
 
         // Get the created product with all relationships for proper mapping
         var createdProduct = await _unitOfWork.Repository<Product>()
-            .GetByIdWithIncludesAsync(product.Id, p => p.Category, p => p.Brand, p => p.Prices);
+            .GetByIdWithIncludesAsync(product.Id, p => p.Category, p => p.Brand);
         
         var productDto = _mapper.Map<ProductDto>(createdProduct);
         
@@ -480,49 +413,6 @@ public class ProductService : IProductService
         _mapper.Map(updateProductDto, product);
         product.UpdatedAt = DateTime.UtcNow;
         
-        // Update prices if provided
-        if (updateProductDto.Prices != null && updateProductDto.Prices.Any())
-        {
-            // Validate for duplicate roles
-            var duplicateRoles = updateProductDto.Prices
-                .GroupBy(p => p.UserRole)
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Key)
-                .ToList();
-
-            if (duplicateRoles.Any())
-            {
-                throw new ArgumentException($"Duplicate user roles found in prices: {string.Join(", ", duplicateRoles)}");
-            }
-
-            // Validate that discounted price is not higher than original price
-            foreach (var price in updateProductDto.Prices)
-            {
-                if (price.DiscountedPrice.HasValue && price.DiscountedPrice.Value > price.Price)
-                {
-                    throw new InvalidOperationException($"Discounted price ({price.DiscountedPrice.Value}) cannot be higher than original price ({price.Price}) for role {price.UserRole}.");
-                }
-            }
-
-            // Remove existing prices
-            var existingPrices = await _unitOfWork.Repository<ProductPrice>()
-                .FindAsync(pp => pp.ProductId == id, cancellationToken);
-            
-            if (existingPrices.Any())
-            {
-                _unitOfWork.Repository<ProductPrice>().RemoveRange(existingPrices);
-            }
-
-            // Add new prices
-            foreach (var priceDto in updateProductDto.Prices)
-            {
-                var productPrice = _mapper.Map<ProductPrice>(priceDto);
-                productPrice.ProductId = id;
-                productPrice.CreatedAt = DateTime.UtcNow;
-                await _unitOfWork.Repository<ProductPrice>().AddAsync(productPrice, cancellationToken);
-            }
-        }
-        
         _unitOfWork.Repository<Product>().Update(product);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -570,50 +460,9 @@ public class ProductService : IProductService
         // Upload new image if provided (after mapping to avoid overwrite)
         if (imageFile != null && imageFile.Length > 0)
         {
-            // IMPORTANT: Do not delete old images to preserve them after publish
-            // Delete old image if exists
-            // if (!string.IsNullOrEmpty(oldImageUrl))
-            // {
-            //     await _fileUploadService.DeleteFileAsync(oldImageUrl);
-            // }
-
             // Upload new image
             var imageUrl = await _fileUploadService.UploadFileAsync(imageFile, "products");
             product.ImageUrl = imageUrl;
-        }
-        
-        // Update prices if provided
-        if (updateProductDto.Prices != null && updateProductDto.Prices.Any())
-        {
-            // Validate for duplicate roles
-            var duplicateRoles = updateProductDto.Prices
-                .GroupBy(p => p.UserRole)
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Key)
-                .ToList();
-
-            if (duplicateRoles.Any())
-            {
-                throw new ArgumentException($"Duplicate user roles found in prices: {string.Join(", ", duplicateRoles)}");
-            }
-
-            // Remove existing prices
-            var existingPrices = await _unitOfWork.Repository<ProductPrice>()
-                .FindAsync(pp => pp.ProductId == id, cancellationToken);
-            
-            if (existingPrices.Any())
-            {
-                _unitOfWork.Repository<ProductPrice>().RemoveRange(existingPrices);
-            }
-
-            // Add new prices
-            foreach (var priceDto in updateProductDto.Prices)
-            {
-                var productPrice = _mapper.Map<ProductPrice>(priceDto);
-                productPrice.ProductId = id;
-                productPrice.CreatedAt = DateTime.UtcNow;
-                await _unitOfWork.Repository<ProductPrice>().AddAsync(productPrice, cancellationToken);
-            }
         }
         
         _unitOfWork.Repository<Product>().Update(product);
@@ -621,7 +470,7 @@ public class ProductService : IProductService
 
         // Return product with all related data
         var updatedProduct = await _unitOfWork.Repository<Product>()
-            .GetByIdWithIncludesAsync(id, p => p.Category, p => p.Brand, p => p.Prices, p => p.Images);
+            .GetByIdWithIncludesAsync(id, p => p.Category, p => p.Brand, p => p.Images);
         
         return _mapper.Map<ProductDto>(updatedProduct);
     }
@@ -797,46 +646,14 @@ public class ProductService : IProductService
             }
         }
         
-        // Update prices if provided
-        if (updateProductDto.Prices != null && updateProductDto.Prices.Any())
-        {
-            // Validate for duplicate roles
-            var duplicateRoles = updateProductDto.Prices
-                .GroupBy(p => p.UserRole)
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Key)
-                .ToList();
 
-            if (duplicateRoles.Any())
-            {
-                throw new ArgumentException($"Duplicate user roles found in prices: {string.Join(", ", duplicateRoles)}");
-            }
-
-            // Remove existing prices
-            var existingPrices = await _unitOfWork.Repository<ProductPrice>()
-                .FindAsync(pp => pp.ProductId == id, cancellationToken);
-            
-            if (existingPrices.Any())
-            {
-                _unitOfWork.Repository<ProductPrice>().RemoveRange(existingPrices);
-            }
-
-            // Add new prices
-            foreach (var priceDto in updateProductDto.Prices)
-            {
-                var productPrice = _mapper.Map<ProductPrice>(priceDto);
-                productPrice.ProductId = id;
-                productPrice.CreatedAt = DateTime.UtcNow;
-                await _unitOfWork.Repository<ProductPrice>().AddAsync(productPrice, cancellationToken);
-            }
-        }
         
         _unitOfWork.Repository<Product>().Update(product);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         // Return product with all related data
         var updatedProduct = await _unitOfWork.Repository<Product>()
-            .GetByIdWithIncludesAsync(id, p => p.Category, p => p.Brand, p => p.Prices, p => p.Images);
+            .GetByIdWithIncludesAsync(id, p => p.Category, p => p.Brand, p => p.Images);
         
         return _mapper.Map<ProductDto>(updatedProduct);
     }
@@ -867,62 +684,37 @@ public class ProductService : IProductService
         return true;
     }
 
-    public async Task<ProductDto> UpdateProductPricesAsync(Guid id, List<CreateProductPriceDto> prices, CancellationToken cancellationToken = default)
-    {
-        var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id, cancellationToken);
-        if (product == null)
-        {
-            throw new ArgumentException("Product not found.");
-        }
 
-        var existingPrices = await _unitOfWork.Repository<ProductPrice>()
-            .FindAsync(pp => pp.ProductId == id, cancellationToken);
-        
-        _unitOfWork.Repository<ProductPrice>().RemoveRange(existingPrices);
-
-        foreach (var priceDto in prices)
-        {
-            var productPrice = _mapper.Map<ProductPrice>(priceDto);
-            productPrice.ProductId = id;
-            await _unitOfWork.Repository<ProductPrice>().AddAsync(productPrice, cancellationToken);
-        }
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return _mapper.Map<ProductDto>(product);
-    }
 
     public async Task<IEnumerable<ProductListDto>> SearchProductsAsync(string searchTerm, UserRole? userRole = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var searchResults = products.Where(p => p.IsActive && 
                            (p.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || 
                             p.Sku.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)));
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(searchResults);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, searchResults, userRole);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return pricedProducts;
+        return productDtos;
     }
 
     public async Task<GlobalSearchResultDto> GlobalSearchAsync(string searchTerm, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
         // Search products (by name and SKU only)
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var productResults = products.Where(p => p.IsActive && 
                            (p.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || 
                             p.Sku.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)));
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(productResults);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, productResults, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
 
         // Search categories (by name only)
         var allCategories = await _categoryService.GetAllCategoriesAsync(cancellationToken);
@@ -938,147 +730,11 @@ public class ProductService : IProductService
         {
             Categories = categoryResults,
             Brands = brandResults,
-            Products = pricedProducts
+            Products = productDtos
         };
     }
 
-    private IEnumerable<ProductListDto> ApplyRoleBasedPricingToListFromProducts(IEnumerable<ProductListDto> productDtos, IEnumerable<Product> products, UserRole? userRole)
-    {
-        var productList = productDtos.ToList();
-        var productArray = products.ToArray();
-        
-        if (!userRole.HasValue)
-        {
-            userRole = UserRole.NormalUser; // Default role for anonymous users
-        }
 
-        for (int i = 0; i < productList.Count; i++)
-        {
-            var productDto = productList[i];
-            var product = productArray.FirstOrDefault(p => p.Id == productDto.Id);
-            
-            if (product != null)
-            {
-                var productPrice = product.Prices.FirstOrDefault(pp => pp.UserRole == userRole.Value);
-                
-                if (productPrice != null)
-                {
-                    productDto.CurrentPrice = productPrice.DiscountedPrice ?? productPrice.Price;
-                    productDto.OriginalPrice = productPrice.Price;
-                    productDto.DiscountPercentage = productPrice.DiscountPercentage;
-                }
-                else
-                {
-                    // Fallback: Try to find any price for this product
-                    var anyPrice = product.Prices.FirstOrDefault();
-                    if (anyPrice != null)
-                    {
-                        productDto.CurrentPrice = anyPrice.DiscountedPrice ?? anyPrice.Price;
-                        productDto.OriginalPrice = anyPrice.Price;
-                        productDto.DiscountPercentage = anyPrice.DiscountPercentage;
-                    }
-                    else
-                    {
-                        // No prices exist - provide default values based on role
-                        var defaultPrice = GetDefaultPriceForRole(userRole.Value);
-                        productDto.CurrentPrice = defaultPrice;
-                        productDto.OriginalPrice = defaultPrice;
-                        productDto.DiscountPercentage = null;
-                    }
-                }
-            }
-        }
-
-        return productList;
-    }
-
-    private static decimal GetDefaultPriceForRole(UserRole userRole)
-    {
-        // Provide default pricing when no ProductPrice entries exist
-        return userRole switch
-        {
-            UserRole.Admin => 100.00m,      // Admin gets lowest price
-            UserRole.VIP => 120.00m,        // VIP gets second lowest
-            UserRole.Wholesale => 150.00m,  // Wholesale gets moderate price
-            UserRole.Retail => 180.00m,     // Retail gets higher price
-            UserRole.NormalUser => 200.00m, // Normal user gets highest price
-            _ => 200.00m                    // Default fallback
-        };
-    }
-
-    private async Task<IEnumerable<ProductListDto>> ApplyRoleBasedPricingToList(IEnumerable<ProductListDto> products, UserRole? userRole, CancellationToken cancellationToken)
-    {
-        var productList = products.ToList();
-        
-        foreach (var product in productList)
-        {
-            await ApplyRoleBasedPricingToListItem(product, userRole, cancellationToken);
-        }
-
-        return productList;
-    }
-
-    private async Task ApplyRoleBasedPricingToListItem(ProductListDto product, UserRole? userRole, CancellationToken cancellationToken)
-    {
-        if (!userRole.HasValue)
-        {
-            userRole = UserRole.NormalUser; 
-        }
-
-        var productPrice = await _unitOfWork.Repository<ProductPrice>()
-            .FirstOrDefaultAsync(pp => pp.ProductId == product.Id && pp.UserRole == userRole.Value, cancellationToken);
-
-        if (productPrice != null)
-        {
-            product.CurrentPrice = productPrice.DiscountedPrice ?? productPrice.Price;
-            product.OriginalPrice = productPrice.Price;
-            product.DiscountPercentage = productPrice.DiscountPercentage;
-        }
-        else
-        {
-            // Fallback: Try to find any price for this product
-            var anyPrice = await _unitOfWork.Repository<ProductPrice>()
-                .FirstOrDefaultAsync(pp => pp.ProductId == product.Id, cancellationToken);
-            
-            if (anyPrice != null)
-            {
-                product.CurrentPrice = anyPrice.DiscountedPrice ?? anyPrice.Price;
-                product.OriginalPrice = anyPrice.Price;
-                product.DiscountPercentage = anyPrice.DiscountPercentage;
-            }
-            else
-            {
-                // No prices exist - provide default values based on role
-                var defaultPrice = GetDefaultPriceForRole(userRole.Value);
-                product.CurrentPrice = defaultPrice;
-                product.OriginalPrice = defaultPrice;
-                product.DiscountPercentage = null;
-            }
-        }
-    }
-
-    private async Task<ProductDto> ApplyRoleBasedPricing(ProductDto product, UserRole? userRole, CancellationToken cancellationToken)
-    {
-        if (!userRole.HasValue)
-        {
-            userRole = UserRole.NormalUser; 
-        }
-
-        var prices = await _unitOfWork.Repository<ProductPrice>()
-            .FindAsync(pp => pp.ProductId == product.Id, cancellationToken);
-
-        // Filter out Admin role and define the fixed order: NormalUser (1) → Retail (2) → Wholesale (3) → VIP (4)
-        var orderedPrices = prices
-            .Where(p => p.UserRole != UserRole.Admin)
-            .OrderBy(p => p.UserRole == UserRole.NormalUser ? 1 : 
-                         p.UserRole == UserRole.Retail ? 2 : 
-                         p.UserRole == UserRole.Wholesale ? 3 : 
-                         p.UserRole == UserRole.VIP ? 4 : 5);
-
-        product.Prices = _mapper.Map<List<ProductPriceDto>>(orderedPrices);
-
-        return product;
-    }
 
     public async Task<ProductDto> UploadProductImageAsync(Guid productId, IFormFile imageFile, CancellationToken cancellationToken = default)
     {
@@ -1484,29 +1140,7 @@ public class ProductService : IProductService
         return summary;
     }
 
-    public async Task<ProductWithAllPricesDto?> GetProductWithAllPricesAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        var product = await _unitOfWork.Repository<Product>().GetByIdWithIncludesAsync(id, p => p.Category, p => p.Prices, p => p.Images);
-        
-        if (product == null)
-        {
-            return null;
-        }
 
-        var productDto = _mapper.Map<ProductWithAllPricesDto>(product);
-        
-        // Map all prices for all roles
-        productDto.AllPrices = product.Prices.Select(price => new ProductPriceDto
-        {
-            Id = price.Id,
-            UserRole = price.UserRole,
-            Price = price.Price,
-            DiscountedPrice = price.DiscountedPrice,
-            DiscountPercentage = price.DiscountPercentage
-        }).OrderBy(p => (int)p.UserRole).ToList();
-
-        return productDto;
-    }
 
     public async Task<RecommendedProductsDto> GetRecommendedProductsAsync(RecommendationRequestDto? request = null, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
@@ -1516,7 +1150,7 @@ public class ProductService : IProductService
         var recommendations = new RecommendedProductsDto();
         
         // Get all active products with includes
-        var allProducts = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Images);
+        var allProducts = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Images);
         var activeProducts = allProducts.Where(p => p.IsActive).ToList();
 
         // 1. Based on user favorites (if user is authenticated)
@@ -1538,8 +1172,7 @@ public class ProductService : IProductService
                     .Take(limit)
                     .ToList();
                 
-                recommendations.BasedOnFavorites = ApplyRoleBasedPricingToListFromProducts(
-                    _mapper.Map<IEnumerable<ProductListDto>>(basedOnFavorites), basedOnFavorites, userRole);
+                recommendations.BasedOnFavorites = _mapper.Map<IEnumerable<ProductListDto>>(basedOnFavorites);
             }
         }
 
@@ -1552,8 +1185,7 @@ public class ProductService : IProductService
                 .Take(limit)
                 .ToList();
                 
-            recommendations.BasedOnCategory = ApplyRoleBasedPricingToListFromProducts(
-                _mapper.Map<IEnumerable<ProductListDto>>(categoryProducts), categoryProducts, userRole);
+            recommendations.BasedOnCategory = _mapper.Map<IEnumerable<ProductListDto>>(categoryProducts);
         }
 
         // 3. Hot deals
@@ -1563,8 +1195,7 @@ public class ProductService : IProductService
             .Take(limit)
             .ToList();
             
-        recommendations.HotDeals = ApplyRoleBasedPricingToListFromProducts(
-            _mapper.Map<IEnumerable<ProductListDto>>(hotDeals), hotDeals, userRole);
+        recommendations.HotDeals = _mapper.Map<IEnumerable<ProductListDto>>(hotDeals);
 
         // 4. Recently added products
         var recentlyAdded = activeProducts
@@ -1572,8 +1203,7 @@ public class ProductService : IProductService
             .Take(limit)
             .ToList();
             
-        recommendations.RecentlyAdded = ApplyRoleBasedPricingToListFromProducts(
-            _mapper.Map<IEnumerable<ProductListDto>>(recentlyAdded), recentlyAdded, userRole);
+        recommendations.RecentlyAdded = _mapper.Map<IEnumerable<ProductListDto>>(recentlyAdded);
 
         // 5. Similar products (if specific product is provided)
         if (request.ProductId.HasValue)
@@ -1588,64 +1218,14 @@ public class ProductService : IProductService
                     .Take(limit)
                     .ToList();
                     
-                recommendations.SimilarProducts = ApplyRoleBasedPricingToListFromProducts(
-                    _mapper.Map<IEnumerable<ProductListDto>>(similarProducts), similarProducts, userRole);
+                recommendations.SimilarProducts = _mapper.Map<IEnumerable<ProductListDto>>(similarProducts);
             }
         }
 
         return recommendations;
     }
 
-    public async Task<int> AddDefaultPricesToProductsWithoutPricesAsync(CancellationToken cancellationToken = default)
-    {
-        // Get all products
-        var allProducts = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
-        var productsWithoutPrices = new List<Product>();
 
-        // Check which products don't have any prices
-        foreach (var product in allProducts)
-        {
-            var hasAnyPrice = await _unitOfWork.Repository<ProductPrice>()
-                .AnyAsync(pp => pp.ProductId == product.Id, cancellationToken);
-            
-            if (!hasAnyPrice)
-            {
-                productsWithoutPrices.Add(product);
-            }
-        }
-
-        // Add default prices for all user roles
-        var userRoles = Enum.GetValues<UserRole>();
-        var addedCount = 0;
-
-        foreach (var product in productsWithoutPrices)
-        {
-            foreach (var role in userRoles)
-            {
-                var defaultPrice = GetDefaultPriceForRole(role);
-                var productPrice = new ProductPrice
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = product.Id,
-                    UserRole = role,
-                    Price = defaultPrice,
-                    DiscountedPrice = null,
-                    DiscountPercentage = null,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                await _unitOfWork.Repository<ProductPrice>().AddAsync(productPrice, cancellationToken);
-                addedCount++;
-            }
-        }
-
-        if (addedCount > 0)
-        {
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        }
-
-        return productsWithoutPrices.Count;
-    }
 
     private static StockStatus GetStockStatus(int stockQuantity)
     {
@@ -1960,7 +1540,7 @@ public class ProductService : IProductService
         if (criteria.Page <= 0) criteria.Page = 1;
         if (criteria.PageSize <= 0) criteria.PageSize = 20;
         
-        var query = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Images, p => p.Brand);
+        var query = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Images, p => p.Brand);
         var products = query.Where(p => p.IsActive).AsQueryable();
         
         System.Console.WriteLine($"DEBUG: Total active products in database: {products.Count()}");
@@ -2038,9 +1618,9 @@ public class ProductService : IProductService
         if (hasValidMinPrice || hasValidMaxPrice)
         {
             System.Console.WriteLine($"DEBUG: Applying price filter - Min: {criteria.MinPrice}, Max: {criteria.MaxPrice}");
-            products = products.Where(p => p.Prices.Any(price => 
-                (!hasValidMinPrice || (price.DiscountedPrice ?? price.Price) >= criteria.MinPrice.Value) &&
-                (!hasValidMaxPrice || (price.DiscountedPrice ?? price.Price) <= criteria.MaxPrice.Value)));
+            products = products.Where(p => 
+                (!hasValidMinPrice || (p.DiscountedPrice ?? p.Price) >= criteria.MinPrice.Value) &&
+                (!hasValidMaxPrice || (p.DiscountedPrice ?? p.Price) <= criteria.MaxPrice.Value));
             System.Console.WriteLine($"DEBUG: Products after price filter: {products.Count()}");
         }
 
@@ -2057,37 +1637,36 @@ public class ProductService : IProductService
         // Get total count before pagination
         var totalCount = products.Count();
 
-        // Convert all filtered products to DTOs and apply role-based pricing
+        // Convert all filtered products to DTOs
         var allProductDtos = _mapper.Map<IEnumerable<ProductListDto>>(products.ToList());
-        var allPricedProducts = ApplyRoleBasedPricingToListFromProducts(allProductDtos, products.ToList(), userRole);
-
-        // Apply sorting after role-based pricing is applied
+        
+        // Apply sorting
         var sortedProducts = criteria.SortBy?.ToLower() switch
         {
             "price" => criteria.SortOrder == "desc" 
-                ? allPricedProducts.OrderByDescending(p => p.CurrentPrice)
-                : allPricedProducts.OrderBy(p => p.CurrentPrice),
+                ? allProductDtos.OrderByDescending(p => p.DiscountedPrice ?? p.Price)
+                : allProductDtos.OrderBy(p => p.DiscountedPrice ?? p.Price),
             "createdat" => criteria.SortOrder == "desc" 
-                ? allPricedProducts.OrderByDescending(p => p.CreatedAt)
-                : allPricedProducts.OrderBy(p => p.CreatedAt),
+                ? allProductDtos.OrderByDescending(p => p.Name) // Defaulting to Name if CreatedAt missing in DTO, or add CreatedAt to DTO
+                : allProductDtos.OrderBy(p => p.Name),
             _ => criteria.SortOrder == "desc" 
-                ? allPricedProducts.OrderByDescending(p => p.Name)
-                : allPricedProducts.OrderBy(p => p.Name)
+                ? allProductDtos.OrderByDescending(p => p.Name)
+                : allProductDtos.OrderBy(p => p.Name)
         };
 
         // Apply pagination after sorting
-        var pricedProducts = sortedProducts
+        var pagedProducts = sortedProducts
             .Skip((criteria.Page - 1) * criteria.PageSize)
             .Take(criteria.PageSize)
             .ToList();
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await PopulateCategoryBreadcrumbs(pagedProducts, cancellationToken);
 
         // Get applied filters for response
         var appliedFilters = await GetAppliedFilters(criteria.FilterCriteria, cancellationToken);
 
         return new FilteredProductsResultDto
         {
-            Products = pricedProducts,
+            Products = pagedProducts,
             TotalCount = totalCount,
             Page = criteria.Page,
             PageSize = criteria.PageSize,
@@ -2483,11 +2062,7 @@ public class ProductService : IProductService
                 _unitOfWork.Repository<ProductImage>().RemoveRange(productImages);
             }
 
-            var productPrices = await _unitOfWork.Repository<ProductPrice>().FindAsync(x => true, cancellationToken);
-            if (productPrices.Any())
-            {
-                _unitOfWork.Repository<ProductPrice>().RemoveRange(productPrices);
-            }
+
 
             var productSpecifications = await _unitOfWork.Repository<ProductSpecification>().FindAsync(x => true, cancellationToken);
             if (productSpecifications.Any())
@@ -3008,7 +2583,7 @@ public class ProductService : IProductService
 
     public async Task<PagedResultDto<ProductListDto>> GetProductsPaginatedAsync(ProductPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Brand);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         
         // Apply filters
         var filteredProducts = products.Where(p => p.IsActive);
@@ -3047,9 +2622,9 @@ public class ProductService : IProductService
         
         if (request.MinPrice.HasValue || request.MaxPrice.HasValue)
         {
-            filteredProducts = filteredProducts.Where(p => p.Prices.Any(price => 
-                (!request.MinPrice.HasValue || price.Price >= request.MinPrice.Value) &&
-                (!request.MaxPrice.HasValue || price.Price <= request.MaxPrice.Value)));
+            filteredProducts = filteredProducts.Where(p => 
+                (!request.MinPrice.HasValue || (p.DiscountedPrice ?? p.Price) >= request.MinPrice.Value) &&
+                (!request.MaxPrice.HasValue || (p.DiscountedPrice ?? p.Price) <= request.MaxPrice.Value));
         }
         
         // Apply sorting
@@ -3066,22 +2641,21 @@ public class ProductService : IProductService
         
         // Map to DTOs
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(pagedProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, pagedProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return CreatePagedResult(pricedProducts, request.Page, request.PageSize, totalCount);
+        return CreatePagedResult(productDtos, request.Page, request.PageSize, totalCount);
     }
 
     public async Task<PagedResultDto<ProductListDto>> GetProductsByCategoryPaginatedAsync(Guid categoryId, ProductPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Brand);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         var categoryIds = await GetCategoryIdsIncludingSubcategories(categoryId, cancellationToken);
         var filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
         
@@ -3111,9 +2685,9 @@ public class ProductService : IProductService
         
         if (request.MinPrice.HasValue || request.MaxPrice.HasValue)
         {
-            filteredProducts = filteredProducts.Where(p => p.Prices.Any(price => 
-                (!request.MinPrice.HasValue || price.Price >= request.MinPrice.Value) &&
-                (!request.MaxPrice.HasValue || price.Price <= request.MaxPrice.Value)));
+            filteredProducts = filteredProducts.Where(p => 
+                (!request.MinPrice.HasValue || (p.DiscountedPrice ?? p.Price) >= request.MinPrice.Value) &&
+                (!request.MaxPrice.HasValue || (p.DiscountedPrice ?? p.Price) <= request.MaxPrice.Value));
         }
         
         // Apply sorting
@@ -3130,17 +2704,16 @@ public class ProductService : IProductService
         
         // Map to DTOs
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(pagedProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, pagedProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return CreatePagedResult(pricedProducts, request.Page, request.PageSize, totalCount);
+        return CreatePagedResult(productDtos, request.Page, request.PageSize, totalCount);
     }
 
     public async Task<PagedResultDto<ProductListDto>> GetProductsByCategorySlugPaginatedAsync(string categorySlug, ProductPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
@@ -3178,7 +2751,7 @@ public class ProductService : IProductService
             throw new ArgumentException($"Brand with slug '{brandSlug}' not found.");
         }
 
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Brand);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         var filteredProducts = products.Where(p => p.BrandId == brand.Id && p.IsActive);
         
         // Apply additional filters
@@ -3203,9 +2776,9 @@ public class ProductService : IProductService
         
         if (request.MinPrice.HasValue || request.MaxPrice.HasValue)
         {
-            filteredProducts = filteredProducts.Where(p => p.Prices.Any(price => 
-                (!request.MinPrice.HasValue || price.Price >= request.MinPrice.Value) &&
-                (!request.MaxPrice.HasValue || price.Price <= request.MaxPrice.Value)));
+            filteredProducts = filteredProducts.Where(p => 
+                (!request.MinPrice.HasValue || (p.DiscountedPrice ?? p.Price) >= request.MinPrice.Value) &&
+                (!request.MaxPrice.HasValue || (p.DiscountedPrice ?? p.Price) <= request.MaxPrice.Value));
         }
         
         // Apply sorting
@@ -3222,22 +2795,21 @@ public class ProductService : IProductService
         
         // Map to DTOs
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(pagedProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, pagedProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return CreatePagedResult(pricedProducts, request.Page, request.PageSize, totalCount);
+        return CreatePagedResult(productDtos, request.Page, request.PageSize, totalCount);
     }
 
     public async Task<PagedResultDto<ProductListDto>> GetHotDealsPaginatedAsync(HotDealsPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Brand);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         var filteredProducts = products.Where(p => p.IsHotDeal && p.IsActive);
         
         if (!string.IsNullOrWhiteSpace(request.BrandSlug))
@@ -3269,17 +2841,16 @@ public class ProductService : IProductService
         
         // Map to DTOs
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(pagedProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, pagedProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return CreatePagedResult(pricedProducts, request.Page, request.PageSize, totalCount);
+        return CreatePagedResult(productDtos, request.Page, request.PageSize, totalCount);
     }
 
     public async Task<PagedResultDto<ProductListDto>> SearchProductsPaginatedAsync(SearchPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
@@ -3289,7 +2860,7 @@ public class ProductService : IProductService
             throw new ArgumentException("Search term is required.", nameof(request.SearchTerm));
         }
 
-        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Brand);
+        var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         var searchTerm = request.SearchTerm.ToLower();
         
         var filteredProducts = products.Where(p => p.IsActive && p.Name.ToLower().Contains(searchTerm));
@@ -3330,17 +2901,16 @@ public class ProductService : IProductService
         
         // Map to DTOs
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(pagedProducts);
-        var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, pagedProducts, userRole);
         
         if (userId.HasValue)
         {
-            await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+            await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
         }
         
-        await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-        await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+        await ApplyFiltersToProductList(productDtos, cancellationToken);
+        await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
         
-        return CreatePagedResult(pricedProducts, request.Page, request.PageSize, totalCount);
+        return CreatePagedResult(productDtos, request.Page, request.PageSize, totalCount);
     }
 
     public async Task<PagedResultDto<ProductListDto>> GetRecommendedProductsPaginatedAsync(RecommendedProductsPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
@@ -3351,7 +2921,7 @@ public class ProductService : IProductService
             var categoryIds = await GetCategoryIdsIncludingSubcategories(request.CategoryId.Value, cancellationToken);
             
             // Get all active products from the category with includes
-            var allProducts = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Prices, p => p.Images);
+            var allProducts = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Images);
             var categoryProducts = allProducts
                 .Where(p => p.IsActive && categoryIds.Contains(p.CategoryId))
                 .ToList();
@@ -3367,22 +2937,21 @@ public class ProductService : IProductService
                 }
             }
             
-            // Map to DTOs and apply role-based pricing
+            // Map to DTOs
             var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(categoryProducts);
-            var pricedProducts = ApplyRoleBasedPricingToListFromProducts(productDtos, categoryProducts, userRole).ToList();
             
             // Apply favorite status if user is authenticated
             if (userId.HasValue)
             {
-                await ApplyFavoriteStatusToProductList(pricedProducts, userId.Value, cancellationToken);
+                await ApplyFavoriteStatusToProductList(productDtos, userId.Value, cancellationToken);
             }
             
             // Apply filters and breadcrumbs
-            await ApplyFiltersToProductList(pricedProducts, cancellationToken);
-            await PopulateCategoryBreadcrumbs(pricedProducts, cancellationToken);
+            await ApplyFiltersToProductList(productDtos, cancellationToken);
+            await PopulateCategoryBreadcrumbs(productDtos, cancellationToken);
             
             // Apply sorting
-            var sortedProducts = ApplyInMemorySorting(pricedProducts, request.ProductSortBy, request.SortOrder);
+            var sortedProducts = ApplyInMemorySorting(productDtos, request.ProductSortBy, request.SortOrder);
             
             var totalCount = sortedProducts.Count();
             var pagedProducts = sortedProducts
@@ -3452,8 +3021,8 @@ public class ProductService : IProductService
                 ? products.OrderByDescending(p => p.Name)
                 : products.OrderBy(p => p.Name),
             ProductSortOption.Price => sortOrder.ToLower() == "desc"
-                ? products.OrderByDescending(p => p.Prices.Min(price => price.Price))
-                : products.OrderBy(p => p.Prices.Min(price => price.Price)),
+                ? products.OrderByDescending(p => p.DiscountedPrice ?? p.Price)
+                : products.OrderBy(p => p.DiscountedPrice ?? p.Price),
             ProductSortOption.CreatedAt => sortOrder.ToLower() == "desc"
                 ? products.OrderByDescending(p => p.CreatedAt)
                 : products.OrderBy(p => p.CreatedAt),
@@ -3478,8 +3047,8 @@ public class ProductService : IProductService
                 ? products.OrderByDescending(p => p.Name)
                 : products.OrderBy(p => p.Name),
             ProductSortOption.Price => sortOrder.ToLower() == "desc"
-                ? products.OrderByDescending(p => p.CurrentPrice ?? 0)
-                : products.OrderBy(p => p.CurrentPrice ?? 0),
+                ? products.OrderByDescending(p => p.DiscountedPrice ?? p.Price)
+                : products.OrderBy(p => p.DiscountedPrice ?? p.Price),
             ProductSortOption.CreatedAt => sortOrder.ToLower() == "desc"
                 ? products.OrderByDescending(p => p.Name) // ProductListDto doesn't have CreatedAt, using Name as fallback
                 : products.OrderBy(p => p.Name),
@@ -3504,8 +3073,8 @@ public class ProductService : IProductService
                 ? products.OrderByDescending(p => p.Name)
                 : products.OrderBy(p => p.Name),
             ProductSortOption.Price => sortOrder.ToLower() == "desc"
-                ? products.OrderByDescending(p => p.CurrentPrice ?? 0)
-                : products.OrderBy(p => p.CurrentPrice ?? 0),
+                ? products.OrderByDescending(p => p.DiscountedPrice ?? p.Price)
+                : products.OrderBy(p => p.DiscountedPrice ?? p.Price),
             ProductSortOption.CreatedAt => sortOrder.ToLower() == "desc"
                 ? products.OrderByDescending(p => p.Name) // ProductListDto doesn't have CreatedAt, using Name as fallback
                 : products.OrderBy(p => p.Name),
