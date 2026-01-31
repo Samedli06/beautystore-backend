@@ -9,13 +9,11 @@ public class CartService : ICartService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
-    private readonly IWhatsAppService _whatsAppService;
 
-    public CartService(IUnitOfWork unitOfWork, IMapper mapper, IWhatsAppService whatsAppService)
+    public CartService(IUnitOfWork unitOfWork, IMapper mapper)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
-        _whatsAppService = whatsAppService;
     }
 
     public async Task<CartDto> GetUserCartAsync(Guid? userId, CancellationToken cancellationToken = default)
@@ -198,116 +196,7 @@ public class CartService : ICartService
         return true;
     }
 
-    public async Task<WhatsAppLinkDto> GenerateWhatsAppOrderAsync(Guid? userId, WhatsAppOrderDto orderDto, CancellationToken cancellationToken = default)
-    {
-        CartDto cartDto;
 
-        if (orderDto.CartId.HasValue && orderDto.CartId.Value != Guid.Empty)
-        {
-            var cart = await _unitOfWork.Repository<Cart>().GetByIdAsync(orderDto.CartId.Value, cancellationToken);
-            if (cart == null)
-            {
-                throw new InvalidOperationException("Cart not found.");
-            }
-            cartDto = await MapCartToDto(cart, cancellationToken);
-        }
-        else if (userId.HasValue)
-        {
-            var cart = await GetOrCreateCartAsync(userId, cancellationToken);
-            cartDto = await MapCartToDto(cart, cancellationToken);
-        }
-        else
-        {
-            if (orderDto.Items == null || !orderDto.Items.Any())
-            {
-                throw new InvalidOperationException("Cart is empty or items not provided.");
-            }
-            cartDto = new CartDto
-            {
-                Items = orderDto.Items,
-                TotalAmount = orderDto.TotalAmount
-            };
-        }
-
-        if (!cartDto.Items.Any())
-        {
-            throw new InvalidOperationException("Cart is empty.");
-        }
-
-        orderDto.Items = cartDto.Items;
-        orderDto.TotalAmount = cartDto.TotalAmount;
-
-        var message = _whatsAppService.FormatOrderMessage(orderDto);
-        var whatsAppUrl = _whatsAppService.GenerateWhatsAppUrl(orderDto.PhoneNumber, message);
-
-        return new WhatsAppLinkDto
-        {
-            WhatsAppUrl = whatsAppUrl,
-            Message = message
-        };
-    }
-
-    public async Task<WhatsAppLinkDto> GenerateQuickWhatsAppOrderAsync(Guid? userId, QuickOrderDto quickOrderDto, CancellationToken cancellationToken = default)
-    {
-        // Validate product exists and is active
-        var product = await _unitOfWork.Repository<Product>().GetByIdAsync(quickOrderDto.ProductId, cancellationToken);
-        if (product == null || !product.IsActive)
-        {
-            throw new ArgumentException("Product not found or inactive.");
-        }
-
-        // Validate quantity
-        if (quickOrderDto.Quantity <= 0)
-        {
-            throw new ArgumentException("Quantity must be greater than zero.");
-        }
-
-        // Check stock availability
-        if (product.StockQuantity < quickOrderDto.Quantity)
-        {
-            throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
-        }
-
-        decimal unitPrice = product.DiscountedPrice ?? product.Price;
-        decimal totalPrice = unitPrice * quickOrderDto.Quantity;
-
-        // Create a single cart item for this product
-        var cartItem = new CartItemDto
-        {
-            Id = Guid.NewGuid(),
-            CartId = Guid.Empty, // Not associated with a cart
-            ProductId = product.Id,
-            ProductName = product.Name,
-            ProductSku = product.Sku,
-            ProductDescription = product.ShortDescription,
-            ProductImageUrl = product.ImageUrl,
-            Quantity = quickOrderDto.Quantity,
-            UnitPrice = unitPrice,
-            TotalPrice = totalPrice,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        // Create WhatsApp order DTO
-        var whatsAppOrderDto = new WhatsAppOrderDto
-        {
-            PhoneNumber = quickOrderDto.PhoneNumber,
-            CustomerName = quickOrderDto.CustomerName,
-            CustomerPhone = quickOrderDto.CustomerPhone,
-            Items = new List<CartItemDto> { cartItem },
-            TotalAmount = totalPrice,
-            Currency = "AZN"
-        };
-
-        // Generate WhatsApp message
-        var message = _whatsAppService.FormatOrderMessage(whatsAppOrderDto);
-        var whatsAppUrl = _whatsAppService.GenerateWhatsAppUrl(quickOrderDto.PhoneNumber, message);
-
-        return new WhatsAppLinkDto
-        {
-            WhatsAppUrl = whatsAppUrl,
-            Message = message
-        };
-    }
 
     private async Task<Cart> GetOrCreateCartAsync(Guid? userId, CancellationToken cancellationToken)
     {

@@ -265,7 +265,7 @@ public class BrandService : IBrandService
                             1, // IsActive = true (1 for bit type)
                             brand.SortOrder,
                             brand.CreatedAt,
-                            (DateTime?)null); // UpdatedAt = NULL
+                            null!); // UpdatedAt = NULL
                     }
                 }
                 catch (Exception dbEx)
@@ -324,7 +324,7 @@ public class BrandService : IBrandService
             1, // IsActive = true (1 for bit type)
             createBrandDto.SortOrder,
             createdAt,
-            (DateTime?)null); // UpdatedAt = NULL
+            null!); // UpdatedAt = NULL
 
         // Retrieve the created brand
         var brand = await _unitOfWork.Repository<Brand>().GetByIdAsync(brandId, cancellationToken);

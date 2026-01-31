@@ -1,0 +1,27 @@
+# robots.txt for Gunay Beauty
+
+User-agent: *
+Allow: /
+
+# Disallow admin and private pages
+Disallow: /admin/
+Disallow: /login
+Disallow: /register
+Disallow: /profile
+Disallow: /cart
+Disallow: /favorites
+
+# Allow important pages
+Allow: /
+Allow: /products
+Allow: /about
+Allow: /contact
+Allow: /brands
+Allow: /categories/
+
+# Sitemap location
+Sitemap: https://gunaybeauty.az/sitemap.xml
+
+# Crawl-delay (optional, adjust as needed)
+Crawl-delay: 1
+

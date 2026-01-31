@@ -29,6 +29,10 @@ public class SmartTeamDbContext : DbContext
     public DbSet<ProductPdf> ProductPdfs { get; set; }
     public DbSet<PromoCode> PromoCodes { get; set; }
     public DbSet<PromoCodeUsage> PromoCodeUsages { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
+    public DbSet<Payment> Payments { get; set; }
+    public DbSet<PendingOrder> PendingOrders { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

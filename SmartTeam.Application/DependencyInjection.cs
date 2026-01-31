@@ -21,7 +21,6 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICartService, CartService>();
-        services.AddScoped<IWhatsAppService, WhatsAppService>();
         services.AddScoped<IFilterService, FilterService>();
         services.AddScoped<IBannerService, BannerService>();
         services.AddScoped<IFavoriteService, FavoriteService>();
@@ -29,6 +28,10 @@ public static class DependencyInjection
         services.AddScoped<IProductPdfService, ProductPdfService>();
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<IPromoCodeService, PromoCodeService>();
+        services.AddScoped<IOrderService, OrderService>();
+        
+        // Add HttpClient for EpointService
+        services.AddHttpClient<IEpointService, EpointService>();
 
         return services;
     }

@@ -53,37 +53,3 @@ public class UpdateCartItemDto
     public int Quantity { get; set; }
 }
 
-public class WhatsAppOrderDto
-{
-    public Guid? CartId { get; set; }
-    public string PhoneNumber { get; set; } = string.Empty;
-    public string CustomerName { get; set; } = string.Empty;
-    public string CustomerPhone { get; set; } = string.Empty;
-    public List<CartItemDto> Items { get; set; } = new();
-    public decimal TotalAmount { get; set; }
-    public string Currency { get; set; } = "AZN";
-}
-
-public class WhatsAppLinkDto
-{
-    public string WhatsAppUrl { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-}
-
-public class QuickOrderDto
-{
-    public Guid ProductId { get; set; }
-    public int Quantity { get; set; } = 1;
-    public string PhoneNumber { get; set; } = string.Empty;
-    public string CustomerName { get; set; } = string.Empty;
-    public string CustomerPhone { get; set; } = string.Empty;
-}
-
-public class QuickOrderRequestDto
-{
-    public string ProductId { get; set; } = string.Empty;
-    public int Quantity { get; set; } = 1;
-    public string PhoneNumber { get; set; } = string.Empty;
-    public string CustomerName { get; set; } = string.Empty;
-    public string CustomerPhone { get; set; } = string.Empty;
-}

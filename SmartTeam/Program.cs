@@ -27,11 +27,14 @@ namespace SmartTeam
                     policy.WithOrigins(
                         "http://localhost:5173", 
                         "https://localhost:5173",
-                        "https://gunaybeauty.az",
-                        "http://gunaybeauty.az",
-                        "https://www.gunaybeauty.az",
-                        "http://www.gunaybeauty.az",
-                        "http://gunaybeauty-001-site1.ltempurl.com"
+                        "http://localhost:7222",
+                        "https://localhost:7222",
+                        "https://gunaybeauty.com",
+                        "http://gunaybeauty.com",
+                        "https://www.gunaybeauty.com",
+                        "http://www.gunaybeauty.com",
+                        "http://gunaybeauty-001-site1.ltempurl.com",
+                        "https://gunaybeauty.netlify.app"
                     )
                     .AllowAnyHeader()
                     .AllowAnyMethod()
@@ -43,6 +46,7 @@ namespace SmartTeam
 
             builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
             builder.Services.Configure<SmartTeam.Infrastructure.Services.EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+            builder.Services.Configure<SmartTeam.Application.DTOs.EpointSettings>(builder.Configuration.GetSection("EpointSettings"));
             var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
             builder.Services.AddAuthentication(options =>
             {
@@ -166,6 +170,7 @@ namespace SmartTeam
             // Disable HTTPS redirection to avoid mixed content issues
             // app.UseHttpsRedirection();
             app.UseStaticFiles();
+            app.UseDefaultFiles();
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -177,6 +182,7 @@ namespace SmartTeam
 
             app.MapControllers();
 
+            app.MapFallbackToFile("index.html");
             app.Run();
         }
     }

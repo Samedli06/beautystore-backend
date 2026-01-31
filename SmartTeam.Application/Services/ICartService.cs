@@ -10,8 +10,6 @@ public interface ICartService
     Task<CartDto> UpdateCartItemAsync(Guid? userId, Guid cartItemId, UpdateCartItemDto updateCartItemDto, CancellationToken cancellationToken = default);
     Task<CartDto> RemoveFromCartAsync(Guid? userId, Guid cartItemId, CancellationToken cancellationToken = default);
     Task<bool> ClearCartAsync(Guid? userId, CancellationToken cancellationToken = default);
-    Task<WhatsAppLinkDto> GenerateWhatsAppOrderAsync(Guid? userId, WhatsAppOrderDto orderDto, CancellationToken cancellationToken = default);
-    Task<WhatsAppLinkDto> GenerateQuickWhatsAppOrderAsync(Guid? userId, QuickOrderDto quickOrderDto, CancellationToken cancellationToken = default);
     Task<int> GetCartCountAsync(Guid? userId, CancellationToken cancellationToken = default);
     
     // Promo code methods
@@ -19,8 +17,4 @@ public interface ICartService
     Task<CartDto> RemovePromoCodeAsync(Guid? userId, CancellationToken cancellationToken = default);
 }
 
-public interface IWhatsAppService
-{
-    string GenerateWhatsAppUrl(string phoneNumber, string message);
-    string FormatOrderMessage(WhatsAppOrderDto orderDto);
-}
+
