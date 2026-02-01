@@ -57,40 +57,25 @@ public class PaymentController : ControllerBase
             }
             catch { }
 
-            // Get cart to calculate total and create snapshot
-            var cartService = HttpContext.RequestServices.GetRequiredService<ICartService>();
-            var cart = await cartService.GetUserCartAsync(userId, cancellationToken);
+            // Create order from cart immediately
+            var order = await _orderService.CreateOrderFromCartAsync(userId, createOrderDto, cancellationToken);
             
-            if (cart == null || !cart.Items.Any())
+            if (order == null)
             {
-                return BadRequest(new { error = "Cart is empty" });
+                return BadRequest(new { error = "Cart is empty or could not create order" });
             }
 
-            // Create pending order (not actual order yet)
-            var pendingOrderId = Guid.NewGuid();
-            var pendingOrder = new PendingOrder
-            {
-                Id = pendingOrderId,
-                UserId = userId,
-                CartSnapshot = JsonSerializer.Serialize(cart),
-                CustomerInfo = JsonSerializer.Serialize(createOrderDto),
-                TotalAmount = cart.FinalAmount,
-                PromoCode = cart.AppliedPromoCode,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddHours(1) // Expire after 1 hour
-            };
+            // Update order status to PaymentInitiated (effectively "Unpaid")
+            await _orderService.UpdateOrderStatusAsync(order.Id, OrderStatus.PaymentInitiated, cancellationToken);
 
-            await _unitOfWork.Repository<PendingOrder>().AddAsync(pendingOrder, cancellationToken);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            // Create payment record linked to pending order
+            // Create payment record linked to order
             var payment = new Payment
             {
                 Id = Guid.NewGuid(),
-                PendingOrderId = pendingOrderId,
-                OrderId = null, // No order yet
-                EpointTransactionId = $"TEMP_{Guid.NewGuid()}", // Temporary ID until Epoint response
-                Amount = cart.FinalAmount,
+                OrderId = order.Id,
+                PendingOrderId = null, 
+                EpointTransactionId = $"TEMP_{Guid.NewGuid()}", 
+                Amount = order.TotalAmount,
                 Currency = "AZN",
                 Status = PaymentStatus.Initiated,
                 PaymentMethod = "Epoint",
@@ -100,11 +85,14 @@ public class PaymentController : ControllerBase
             await _unitOfWork.Repository<Payment>().AddAsync(payment, cancellationToken);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // Create payment request to Epoint (use PendingOrder ID)
+            // Link payment to order
+            await _orderService.LinkPaymentToOrderAsync(order.Id, payment.Id, cancellationToken);
+
+            // Create payment request to Epoint using actual Order ID
             var epointResponse = await _epointService.CreatePaymentRequestAsync(
-                pendingOrderId,
-                cart.FinalAmount,
-                $"Payment for order",
+                order.Id,
+                order.TotalAmount,
+                $"Order {order.OrderNumber}",
                 cancellationToken);
 
             // Update payment with Epoint transaction ID
@@ -132,42 +120,83 @@ public class PaymentController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> PaymentSuccess(
         [FromQuery(Name = "order_id")] string? orderId,
-        [FromQuery(Name = "transaction_id")] string? transactionId)
+        [FromQuery(Name = "transaction_id")] string? transactionId,
+        CancellationToken cancellationToken)
     {
         // Log all query parameters to debug parameter names
         var queryParams = string.Join(", ", Request.Query.Select(k => $"{k.Key}={k.Value}"));
         _logger.LogInformation("PaymentSuccess called with query: {Query}", queryParams);
-        _logger.LogInformation("PaymentSuccess - order_id: {OrderId}, transaction_id: {TransactionId}", orderId, transactionId);
 
         // Try multiple parameter name variations
         if (string.IsNullOrEmpty(orderId))
         {
             orderId = Request.Query["order"].ToString();
-            if (string.IsNullOrEmpty(orderId))
-                orderId = Request.Query["orderId"].ToString();
-            if (string.IsNullOrEmpty(orderId))
-                orderId = Request.Query["order_number"].ToString();
-            if (string.IsNullOrEmpty(orderId))
-                orderId = Request.Query["orderNumber"].ToString();
+            if (string.IsNullOrEmpty(orderId)) orderId = Request.Query["orderId"].ToString();
+            if (string.IsNullOrEmpty(orderId)) orderId = Request.Query["order_number"].ToString();
+            if (string.IsNullOrEmpty(orderId)) orderId = Request.Query["orderNumber"].ToString();
         }
         
         if (string.IsNullOrEmpty(transactionId))
         {
             transactionId = Request.Query["transaction"].ToString();
-            if (string.IsNullOrEmpty(transactionId))
-                transactionId = Request.Query["transactionId"].ToString();
-            if (string.IsNullOrEmpty(transactionId))
-                transactionId = Request.Query["trans_id"].ToString();
+            if (string.IsNullOrEmpty(transactionId)) transactionId = Request.Query["transactionId"].ToString();
+            if (string.IsNullOrEmpty(transactionId)) transactionId = Request.Query["trans_id"].ToString();
         }
 
         _logger.LogInformation("PaymentSuccess - Final values: order_id={OrderId}, transaction_id={TransactionId}", orderId, transactionId);
+
+        // =================================================================================
+        // FAILSAFE: Update status here in case server-to-server callback failed (common in dev/localhost)
+        // =================================================================================
+        if (Guid.TryParse(orderId, out var parsedOrderId))
+        {
+            try 
+            {
+                var order = await _orderService.GetOrderByIdAsync(parsedOrderId, cancellationToken);
+                if (order != null && order.Status != OrderStatus.Paid.ToString())
+                {
+                    var payment = await _unitOfWork.Repository<Payment>().FirstOrDefaultAsync(p => p.OrderId == parsedOrderId, cancellationToken);
+                    if (payment != null)
+                    {
+                        // If transaction ID is provided, verify it matches
+                        // If not provided (Epoint doesn't always send it), still process if payment exists
+                        bool shouldProcess = string.IsNullOrEmpty(transactionId) || 
+                                           payment.EpointTransactionId == transactionId || 
+                                           payment.EpointTransactionId?.StartsWith("TEMP") == true;
+                        
+                        if (shouldProcess)
+                        {
+                            _logger.LogInformation("Failsafe: Auto-completing order {OrderId} in success redirect", parsedOrderId);
+                            
+                            // Update Payment
+                            payment.Status = PaymentStatus.Completed;
+                            if (!string.IsNullOrEmpty(transactionId))
+                            {
+                                payment.EpointTransactionId = transactionId; // Update if provided
+                            }
+                            payment.CompletedAt = DateTime.UtcNow;
+                            _unitOfWork.Repository<Payment>().Update(payment);
+                            
+                            // Update Order (this will reduce stock)
+                            await _orderService.UpdateOrderStatusAsync(parsedOrderId, OrderStatus.Paid, cancellationToken);
+                            await _unitOfWork.SaveChangesAsync(cancellationToken);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                 _logger.LogError(ex, "Error executing failsafe status update in PaymentSuccess");
+            }
+        }
+        // =================================================================================
 
         // URL encode parameters to ensure they're preserved
         var encodedOrderId = Uri.EscapeDataString(orderId ?? "");
         var encodedTransactionId = Uri.EscapeDataString(transactionId ?? "");
 
-        // Redirect to frontend success page
-        var frontendUrl = $"https://gunaybeauty.com/payment/success?orderId={encodedOrderId}&transactionId={encodedTransactionId}";
+        // Redirect to frontend success page with status
+        var frontendUrl = $"https://gunaybeauty.com/payment/success?orderId={encodedOrderId}&transactionId={encodedTransactionId}&status=paid";
         _logger.LogInformation("Redirecting to: {Url}", frontendUrl);
         return Redirect(frontendUrl);
     }
@@ -180,7 +209,8 @@ public class PaymentController : ControllerBase
     public async Task<IActionResult> PaymentError(
         [FromQuery(Name = "order_id")] string? orderId,
         [FromQuery(Name = "transaction_id")] string? transactionId,
-        [FromQuery(Name = "message")] string? message)
+        [FromQuery(Name = "message")] string? message,
+        CancellationToken cancellationToken)
     {
         // Log all query parameters
         var queryParams = string.Join(", ", Request.Query.Select(k => $"{k.Key}={k.Value}"));
@@ -190,24 +220,49 @@ public class PaymentController : ControllerBase
         if (string.IsNullOrEmpty(orderId))
         {
             orderId = Request.Query["order"].ToString();
-            if (string.IsNullOrEmpty(orderId))
-                orderId = Request.Query["orderId"].ToString();
+            if (string.IsNullOrEmpty(orderId)) orderId = Request.Query["orderId"].ToString();
         }
         
         if (string.IsNullOrEmpty(transactionId))
         {
             transactionId = Request.Query["transaction"].ToString();
-            if (string.IsNullOrEmpty(transactionId))
-                transactionId = Request.Query["transactionId"].ToString();
+            if (string.IsNullOrEmpty(transactionId)) transactionId = Request.Query["transactionId"].ToString();
         }
+
+        // =================================================================================
+        // FAILSAFE: Update status here in case server-to-server callback failed
+        // =================================================================================
+        if (Guid.TryParse(orderId, out var parsedOrderId))
+        {
+            try 
+            {
+                var payment = await _unitOfWork.Repository<Payment>().FirstOrDefaultAsync(p => p.OrderId == parsedOrderId, cancellationToken);
+                if (payment != null && payment.Status != PaymentStatus.Failed && payment.Status != PaymentStatus.Completed)
+                {
+                    _logger.LogInformation("Failsafe: Marking order {OrderId} as Failed in error redirect", parsedOrderId);
+                    
+                    payment.Status = PaymentStatus.Failed;
+                    payment.ErrorMessage = message;
+                    _unitOfWork.Repository<Payment>().Update(payment);
+                    
+                    await _orderService.UpdateOrderStatusAsync(parsedOrderId, OrderStatus.Failed, cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                 _logger.LogError(ex, "Error executing failsafe status update in PaymentError");
+            }
+        }
+        // =================================================================================
 
         // URL encode parameters
         var encodedOrderId = Uri.EscapeDataString(orderId ?? "");
         var encodedTransactionId = Uri.EscapeDataString(transactionId ?? "");
         var encodedMessage = Uri.EscapeDataString(message ?? "");
 
-        // Redirect to frontend error page
-        var frontendUrl = $"https://gunaybeauty.com/payment/error?orderId={encodedOrderId}&transactionId={encodedTransactionId}&message={encodedMessage}";
+        // Redirect to frontend error page with status
+        var frontendUrl = $"https://gunaybeauty.com/payment/error?orderId={encodedOrderId}&transactionId={encodedTransactionId}&message={encodedMessage}&status=failed";
         return Redirect(frontendUrl);
     }
 
@@ -231,34 +286,45 @@ public class PaymentController : ControllerBase
                 return BadRequest(new { error = "Invalid signature" });
             }
 
-            // Parse pending order ID (not order ID anymore!)
-            if (!Guid.TryParse(callback.order_id, out var pendingOrderId))
+            // Parse order ID
+            if (!Guid.TryParse(callback.order_id, out var orderId))
             {
-                _logger.LogWarning("Invalid pending order ID in callback: {OrderId}", callback.order_id);
-                return BadRequest(new { error = "Invalid pending order ID" });
+                _logger.LogWarning("Invalid order ID in callback: {OrderId}", callback.order_id);
+                return BadRequest(new { error = "Invalid order ID" });
             }
 
-            // Get pending order
-            var pendingOrder = await _unitOfWork.Repository<PendingOrder>()
-                .FirstOrDefaultAsync(p => p.Id == pendingOrderId, cancellationToken);
-            
-            if (pendingOrder == null)
+            // Get order
+            var order = await _orderService.GetOrderByIdAsync(orderId, cancellationToken);
+            if (order == null)
             {
-                _logger.LogWarning("Pending order not found: {PendingOrderId}", pendingOrderId);
-                return BadRequest(new { error = "Pending order not found" });
+                _logger.LogWarning("Order not found: {OrderId}", orderId);
+                return BadRequest(new { error = "Order not found" });
             }
 
             // Get payment
             var payment = await _unitOfWork.Repository<Payment>()
-                .FirstOrDefaultAsync(p => p.PendingOrderId == pendingOrderId, cancellationToken);
-
+                .FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+            
+            // If payment record doesn't exist (should not happen if initiated correctly), create one or log error
             if (payment == null)
             {
-                _logger.LogWarning("Payment not found for pending order: {PendingOrderId}", pendingOrderId);
-                return BadRequest(new { error = "Payment not found" });
+                _logger.LogWarning("Payment record not found for order: {OrderId}. Creating new record based on callback.", orderId);
+                // Creating a fallback payment record if original initiation failed to save
+                payment = new Payment
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = orderId,
+                    EpointTransactionId = callback.transaction_id ?? $"UNKNOWN_{Guid.NewGuid()}",
+                    Amount = callback.amount, 
+                    Currency = callback.currency,
+                    Status = PaymentStatus.Initiated,
+                    PaymentMethod = "Epoint",
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _unitOfWork.Repository<Payment>().AddAsync(payment, cancellationToken);
             }
 
-            // Update payment transaction ID if provided
+            // Update payment transaction ID
             if (!string.IsNullOrEmpty(callback.transaction_id))
             {
                 payment.EpointTransactionId = callback.transaction_id;
@@ -267,91 +333,43 @@ public class PaymentController : ControllerBase
             // Process based on payment status
             if (callback.status.ToLower() == "success" || callback.status.ToLower() == "completed")
             {
-                _logger.LogInformation("Payment successful for pending order: {PendingOrderId}", pendingOrderId);
+                _logger.LogInformation("Payment successful for order: {OrderId}", orderId);
                 
-                // Deserialize cart and customer info
-                var cart = JsonSerializer.Deserialize<CartDto>(pendingOrder.CartSnapshot);
-                var customerInfo = JsonSerializer.Deserialize<CreateOrderDto>(pendingOrder.CustomerInfo);
-                
-                if (cart == null || customerInfo == null)
-                {
-                    _logger.LogError("Failed to deserialize pending order data");
-                    return BadRequest(new { error = "Invalid pending order data" });
-                }
-
-                // NOW create the actual order
-                var order = await _orderService.CreateOrderFromCartAsync(
-                    pendingOrder.UserId, 
-                    customerInfo, 
-                    cancellationToken);
-
-                _logger.LogInformation("Order created: {OrderId} from pending order: {PendingOrderId}", 
-                    order.Id, pendingOrderId);
-
-                // Update payment to link to actual order
-                payment.OrderId = order.Id;
-                payment.PendingOrderId = null;
                 payment.Status = PaymentStatus.Completed;
                 payment.CompletedAt = DateTime.UtcNow;
-                payment.ResponseData = JsonSerializer.Serialize(callback);
-                _unitOfWork.Repository<Payment>().Update(payment);
-
-                // Update order status to Paid
-                await _orderService.UpdateOrderStatusAsync(order.Id, OrderStatus.Paid, cancellationToken);
                 
-                // Link payment to order
-                await _orderService.LinkPaymentToOrderAsync(order.Id, payment.Id, cancellationToken);
-
-                // Delete pending order (no longer needed)
-                _unitOfWork.Repository<PendingOrder>().Remove(pendingOrder);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogInformation("Payment completed successfully. Order: {OrderId}, Payment: {PaymentId}", 
-                    order.Id, payment.Id);
+                await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Paid, cancellationToken);
             }
             else if (callback.status.ToLower() == "failed" || callback.status.ToLower() == "error")
             {
-                _logger.LogWarning("Payment failed for pending order: {PendingOrderId}", pendingOrderId);
+                _logger.LogWarning("Payment failed for order: {OrderId}", orderId);
                 
-                // Mark payment as failed
                 payment.Status = PaymentStatus.Failed;
                 payment.ErrorMessage = callback.message;
-                payment.ResponseData = JsonSerializer.Serialize(callback);
-                _unitOfWork.Repository<Payment>().Update(payment);
-
-                // Delete pending order (no order will be created)
-                _unitOfWork.Repository<PendingOrder>().Remove(pendingOrder);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogInformation("Payment failed. Pending order deleted: {PendingOrderId}", pendingOrderId);
+                
+                await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Failed, cancellationToken);
             }
             else if (callback.status.ToLower() == "cancelled")
             {
-                _logger.LogWarning("Payment cancelled for pending order: {PendingOrderId}", pendingOrderId);
+                _logger.LogWarning("Payment cancelled for order: {OrderId}", orderId);
                 
                 payment.Status = PaymentStatus.Cancelled;
-                payment.ResponseData = JsonSerializer.Serialize(callback);
-                _unitOfWork.Repository<Payment>().Update(payment);
+                
+                await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Cancelled, cancellationToken);
+            }
 
-                // Delete pending order
-                _unitOfWork.Repository<PendingOrder>().Remove(pendingOrder);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
-            else
-            {
-                _logger.LogWarning("Unknown payment status: {Status}", callback.status);
-                payment.ErrorMessage = $"Unknown status: {callback.status}";
-                payment.ResponseData = JsonSerializer.Serialize(callback);
-                _unitOfWork.Repository<Payment>().Update(payment);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-            }
+            payment.ResponseData = JsonSerializer.Serialize(callback);
+            _unitOfWork.Repository<Payment>().Update(payment);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Payment callback processed successfully for order: {OrderId}", orderId);
 
             return Ok(new { message = "Callback processed successfully" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing Epoint callback");
-            return BadRequest(new { error = ex.Message });
+            return StatusCode(500, new { error = "Internal server error" });
         }
     }
 }

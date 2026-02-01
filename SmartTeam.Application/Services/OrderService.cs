@@ -10,12 +10,14 @@ public class OrderService : IOrderService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ICartService _cartService;
+    private readonly IProductService _productService;
 
-    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService)
+    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService, IProductService productService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _cartService = cartService;
+        _productService = productService;
     }
 
     public async Task<OrderDto> CreateOrderFromCartAsync(Guid? userId, CreateOrderDto createOrderDto, CancellationToken cancellationToken = default)
@@ -135,10 +137,20 @@ public class OrderService : IOrderService
 
     public async Task<OrderDto> UpdateOrderStatusAsync(Guid orderId, OrderStatus status, CancellationToken cancellationToken = default)
     {
-        var order = await _unitOfWork.Repository<Order>().GetByIdAsync(orderId, cancellationToken);
+        var order = await _unitOfWork.Repository<Order>().GetByIdWithIncludesAsync(orderId, o => o.OrderItems);
         if (order == null)
         {
             throw new ArgumentException("Order not found");
+        }
+
+        // Handle post-payment actions when transitioning to Paid status
+        if (status == OrderStatus.Paid && order.Status != OrderStatus.Paid)
+        {
+            // Reduce stock for all items
+            foreach (var item in order.OrderItems)
+            {
+                await _productService.ReduceStockAsync(item.ProductId, item.Quantity, cancellationToken);
+            }
         }
 
         order.Status = status;

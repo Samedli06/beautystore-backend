@@ -45,8 +45,8 @@ public class EpointService : IEpointService
                 language = _settings.Language,
                 description = description ?? $"Order #{orderId}",
                 order_id = orderId.ToString(),
-                success_redirect_url = $"https://gunaybeauty.com/payment/success?order_id={orderId}",
-                error_redirect_url = $"https://gunaybeauty.com/payment/error?order_id={orderId}"
+                success_redirect_url = $"https://gunaybeauty.com/api/v1/Payment/success?order_id={orderId}",
+                error_redirect_url = $"https://gunaybeauty.com/api/v1/Payment/error?order_id={orderId}"
             };
 
             // Verify if amount needs to be a string or number. Documentation shows string "30.75" in JSON example.

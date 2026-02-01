@@ -3108,4 +3108,19 @@ public class ProductService : IProductService
     }
 
     #endregion
+    public async Task ReduceStockAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
+    {
+        var product = await _unitOfWork.Repository<Product>().GetByIdAsync(productId, cancellationToken);
+        if (product != null)
+        {
+            product.StockQuantity -= quantity;
+            
+            // Log if stock goes negative, but allow it for now to prevent order failures? 
+            // Or clamp at 0? Usually e-commerce tracks negative for backorders.
+            // Leaving as is.
+            
+            _unitOfWork.Repository<Product>().Update(product);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+    }
 }

@@ -57,4 +57,7 @@ public interface IProductService
     // Database management methods
     Task CleanAllDataAsync(CancellationToken cancellationToken = default);
     Task AddAzerbaijaniCategoriesAsync(CancellationToken cancellationToken = default);
+
+    // Stock Management
+    Task ReduceStockAsync(Guid productId, int quantity, CancellationToken cancellationToken = default);
 }
