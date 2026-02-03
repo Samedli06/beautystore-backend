@@ -11,13 +11,15 @@ public class OrderService : IOrderService
     private readonly IMapper _mapper;
     private readonly ICartService _cartService;
     private readonly IProductService _productService;
+    private readonly ILoyaltyService _loyaltyService;
 
-    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService, IProductService productService)
+    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService, IProductService productService, ILoyaltyService loyaltyService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _cartService = cartService;
         _productService = productService;
+        _loyaltyService = loyaltyService;
     }
 
     public async Task<OrderDto> CreateOrderFromCartAsync(Guid? userId, CreateOrderDto createOrderDto, CancellationToken cancellationToken = default)
@@ -151,6 +153,12 @@ public class OrderService : IOrderService
             {
                 await _productService.ReduceStockAsync(item.ProductId, item.Quantity, cancellationToken);
             }
+        }
+
+        // Award Loyalty Bonus (Idempotent check inside service allows safe retries)
+        if (status == OrderStatus.Paid)
+        {
+            await _loyaltyService.AwardBonusForOrderAsync(order.UserId, order.Id, order.TotalAmount, cancellationToken);
         }
 
         order.Status = status;

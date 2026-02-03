@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<IBrandService, BrandService>();
         services.AddScoped<IPromoCodeService, PromoCodeService>();
         services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<ILoyaltyService, LoyaltyService>();
         
         // Add HttpClient for EpointService
         services.AddHttpClient<IEpointService, EpointService>();

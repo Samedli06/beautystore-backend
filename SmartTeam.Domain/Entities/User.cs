@@ -13,9 +13,12 @@ public class User
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     
+    
     public ICollection<Cart> Carts { get; set; } = new List<Cart>();
     public ICollection<UserFavorite> Favorites { get; set; } = new List<UserFavorite>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+    
+    public Wallet? Wallet { get; set; }
 }
 
 public enum UserRole

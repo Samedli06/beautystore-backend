@@ -178,4 +178,36 @@ public class OrderController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Update order status (Admin only)
+    /// </summary>
+    [HttpPut("{id}/status")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(OrderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderDto>> UpdateOrderStatus(
+        Guid id,
+        [FromBody] UpdateOrderStatusDto request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var updatedOrder = await _orderService.UpdateOrderStatusAsync(id, request.Status, cancellationToken);
+            return Ok(updatedOrder);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Order not found: {OrderId}", id);
+            return NotFound(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating order status for {OrderId}", id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }

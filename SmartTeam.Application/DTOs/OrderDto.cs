@@ -55,3 +55,8 @@ public class CreateOrderDto
     public string? ShippingAddress { get; set; }
     public string? Notes { get; set; }
 }
+
+public class UpdateOrderStatusDto
+{
+    public OrderStatus Status { get; set; }
+}
