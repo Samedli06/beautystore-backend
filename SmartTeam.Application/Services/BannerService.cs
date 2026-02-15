@@ -349,7 +349,10 @@ public class BannerService : IBannerService
             Name = type.ToString(),
             Description = type switch
             {
-                BannerType.Hero => "Main hero banner displayed prominently",
+                BannerType.Hero => "Main hero banner displayed at the top of the home page",
+                BannerType.Top => "Additional banner displayed at the top of the page, below header",
+                BannerType.Middle => "Banner displayed between content sections",
+                BannerType.Bottom => "Banner displayed near the footer",
                 _ => type.ToString()
             }
         });

@@ -18,6 +18,10 @@ public class OrderDto
     public string CustomerPhone { get; set; } = string.Empty;
     public string? ShippingAddress { get; set; }
     public string? Notes { get; set; }
+    public int? InstallmentPeriod { get; set; }
+    public decimal? InstallmentInterestPercentage { get; set; }
+    public decimal? InstallmentInterestAmount { get; set; }
+    public decimal? OriginalAmount { get; set; }
     public List<OrderItemDto> Items { get; set; } = new();
     public PaymentDto? Payment { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -43,6 +47,9 @@ public class PaymentDto
     public string Currency { get; set; } = "AZN";
     public string Status { get; set; } = string.Empty;
     public string PaymentMethod { get; set; } = "Epoint";
+    public int? InstallmentPeriod { get; set; }
+    public decimal? InstallmentInterestAmount { get; set; }
+    public decimal? OriginalAmount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
@@ -54,6 +61,7 @@ public class CreateOrderDto
     public string CustomerPhone { get; set; } = string.Empty;
     public string? ShippingAddress { get; set; }
     public string? Notes { get; set; }
+    public Guid? InstallmentOptionId { get; set; }
 }
 
 public class UpdateOrderStatusDto

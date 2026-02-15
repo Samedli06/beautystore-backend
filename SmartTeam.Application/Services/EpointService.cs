@@ -29,29 +29,34 @@ public class EpointService : IEpointService
         return Convert.ToBase64String(hashBytes);
     }
 
-    public async Task<EpointPaymentResponse> CreatePaymentRequestAsync(Guid orderId, decimal amount, string? description, CancellationToken cancellationToken = default)
+    public async Task<EpointPaymentResponse> CreatePaymentRequestAsync(Guid orderId, decimal amount, string? description, int? installmentPeriod = null, CancellationToken cancellationToken = default)
     {
         try
         {
             var publicKey = _settings.PublicKey?.Trim();
             var privateKey = _settings.PrivateKey?.Trim();
 
-            // Use anonymous object to control formatting exactly as needed (amount as string)
-            var requestData = new
+            // Build request data dynamically to include installment_period only if provided
+            var requestDataDict = new Dictionary<string, object>
             {
-                public_key = publicKey,
-                amount = amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
-                currency = _settings.Currency,
-                language = _settings.Language,
-                description = description ?? $"Order #{orderId}",
-                order_id = orderId.ToString(),
-                success_redirect_url = $"https://gunaybeauty.com/api/v1/Payment/success?order_id={orderId}",
-                error_redirect_url = $"https://gunaybeauty.com/api/v1/Payment/error?order_id={orderId}"
+                { "public_key", publicKey! },
+                { "amount", amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) },
+                { "currency", _settings.Currency },
+                { "language", _settings.Language },
+                { "description", description ?? $"Order #{orderId}" },
+                { "order_id", orderId.ToString() },
+                { "success_redirect_url", $"https://gunaybeauty.com/api/v1/Payment/success?order_id={orderId}" },
+                { "error_redirect_url", $"https://gunaybeauty.com/api/v1/Payment/error?order_id={orderId}" }
             };
 
-            // Verify if amount needs to be a string or number. Documentation shows string "30.75" in JSON example.
-            // Documentation C# example uses simple default serialization.
-            var jsonRequest = JsonSerializer.Serialize(requestData);
+            // Add installment period if provided (Epoint expects this for installment payments)
+            if (installmentPeriod.HasValue && installmentPeriod.Value > 0)
+            {
+                requestDataDict.Add("installment_period", installmentPeriod.Value);
+            }
+
+            // Serialize to JSON
+            var jsonRequest = JsonSerializer.Serialize(requestDataDict);
             var jsonBytes = Encoding.UTF8.GetBytes(jsonRequest);
             var base64Data = Convert.ToBase64String(jsonBytes);
             

@@ -36,6 +36,8 @@ public class SmartTeamDbContext : DbContext
     public DbSet<Wallet> Wallets { get; set; }
     public DbSet<WalletTransaction> WalletTransactions { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
+    public DbSet<InstallmentConfiguration> InstallmentConfigurations { get; set; }
+    public DbSet<InstallmentOption> InstallmentOptions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

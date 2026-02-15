@@ -23,5 +23,8 @@ public class Banner
 
 public enum BannerType
 {
-    Hero = 0        // Main hero banner
+    Hero = 0,        // Main hero banner (Top)
+    Top = 1,         // Additional top banners
+    Middle = 2,      // Between sections
+    Bottom = 3       // Near footer
 }

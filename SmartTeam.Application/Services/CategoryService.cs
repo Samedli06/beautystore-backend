@@ -226,6 +226,9 @@ public class CategoryService : ICategoryService
 
         // Update category properties
         category.Name = updateCategoryDto.Name;
+        category.Slug = !string.IsNullOrWhiteSpace(updateCategoryDto.Slug) 
+            ? updateCategoryDto.Slug 
+            : GenerateSlug(updateCategoryDto.Name);
         category.Description = updateCategoryDto.Description;
         category.IsActive = updateCategoryDto.IsActive;
         category.SortOrder = updateCategoryDto.SortOrder;

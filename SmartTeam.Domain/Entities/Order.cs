@@ -33,6 +33,12 @@ public class Order
     public string? ShippingAddress { get; set; }
     public string? Notes { get; set; }
     
+    // Installment payment fields
+    public int? InstallmentPeriod { get; set; }
+    public decimal? InstallmentInterestPercentage { get; set; }
+    public decimal? InstallmentInterestAmount { get; set; }
+    public decimal? OriginalAmount { get; set; }
+    
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     

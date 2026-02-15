@@ -12,7 +12,7 @@ public interface IEpointService
     /// <summary>
     /// Create payment request to Epoint
     /// </summary>
-    Task<EpointPaymentResponse> CreatePaymentRequestAsync(Guid orderId, decimal amount, string? description, CancellationToken cancellationToken = default);
+    Task<EpointPaymentResponse> CreatePaymentRequestAsync(Guid orderId, decimal amount, string? description, int? installmentPeriod = null, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Verify callback signature from Epoint

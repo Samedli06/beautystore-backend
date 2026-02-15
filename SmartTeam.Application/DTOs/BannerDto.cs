@@ -78,7 +78,7 @@ public class UpdateBannerDto
 public class BannerSearchDto
 {
     public string? SearchTerm { get; set; }
-    public BannerType? Type { get; set; } = BannerType.Hero; // Always Hero
+    public BannerType? Type { get; set; }
     public bool? IsActive { get; set; }
     public bool? IsCurrentlyActive { get; set; }
     public DateTime? StartDateFrom { get; set; }

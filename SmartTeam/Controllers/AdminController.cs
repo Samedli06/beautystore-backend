@@ -751,9 +751,17 @@ public class AdminController : ControllerBase
     [AllowAnonymous]
     [HttpGet("banners")]
     [ProducesResponseType(typeof(IEnumerable<BannerDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<BannerDto>>> GetAllBanners(CancellationToken cancellationToken)
+    public async Task<ActionResult<IEnumerable<BannerDto>>> GetAllBanners([FromQuery] BannerType? type, CancellationToken cancellationToken)
     {
-        var banners = await _bannerService.GetAllBannersAsync(cancellationToken);
+        IEnumerable<BannerDto> banners;
+        if (type.HasValue)
+        {
+            banners = await _bannerService.GetBannersByTypeAsync(type.Value, cancellationToken);
+        }
+        else
+        {
+            banners = await _bannerService.GetAllBannersAsync(cancellationToken);
+        }
         
         // Add debugging information for image URLs
         foreach (var banner in banners)
@@ -778,6 +786,7 @@ public class AdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<PagedBannerResultDto>> SearchBanners(
         [FromQuery] string? searchTerm,
+        [FromQuery] BannerType? type,
         [FromQuery] bool? isActive,
         [FromQuery] bool? isCurrentlyActive,
         [FromQuery] DateTime? startDateFrom,
@@ -793,7 +802,7 @@ public class AdminController : ControllerBase
             var searchDto = new BannerSearchDto
             {
                 SearchTerm = searchTerm,
-                Type = BannerType.Hero, // Always Hero since it's the only type
+                Type = type,
                 IsActive = isActive,
                 IsCurrentlyActive = isCurrentlyActive,
                 StartDateFrom = startDateFrom,

@@ -79,6 +79,9 @@ public class PaymentController : ControllerBase
                 Currency = "AZN",
                 Status = PaymentStatus.Initiated,
                 PaymentMethod = "Epoint",
+                InstallmentPeriod = order.InstallmentPeriod,
+                InstallmentInterestAmount = order.InstallmentInterestAmount,
+                OriginalAmount = order.OriginalAmount,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -93,6 +96,7 @@ public class PaymentController : ControllerBase
                 order.Id,
                 order.TotalAmount,
                 $"Order {order.OrderNumber}",
+                order.InstallmentPeriod,
                 cancellationToken);
 
             // Update payment with Epoint transaction ID

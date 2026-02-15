@@ -26,6 +26,11 @@ public class Payment
     public string? ResponseData { get; set; }
     public string? ErrorMessage { get; set; }
     
+    // Installment payment fields
+    public int? InstallmentPeriod { get; set; }
+    public decimal? InstallmentInterestAmount { get; set; }
+    public decimal? OriginalAmount { get; set; }
+    
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     

@@ -62,8 +62,10 @@ public class CartService : ICartService
             throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
         }
 
-        // Use discounted price if available, otherwise regular price
-        decimal unitPrice = product.DiscountedPrice ?? product.Price;
+        // Use discounted price if available AND greater than 0, otherwise regular price
+        decimal unitPrice = (product.DiscountedPrice.HasValue && product.DiscountedPrice.Value > 0) 
+            ? product.DiscountedPrice.Value 
+            : product.Price;
 
         if (unitPrice <= 0)
         {
@@ -306,7 +308,8 @@ public class CartService : ICartService
                 decimal itemDiscount = 0;
 
                 // Calculate discount per item: (original price - discounted price) * quantity
-                if (product.DiscountedPrice.HasValue)
+                // Only apply discount if discounted price is set AND greater than 0
+                if (product.DiscountedPrice.HasValue && product.DiscountedPrice.Value > 0)
                 {
                     var discountedPrice = product.DiscountedPrice.Value;
                     itemDiscount = (originalPrice - discountedPrice) * item.Quantity;

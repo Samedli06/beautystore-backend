@@ -18,7 +18,8 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
             .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => true));
         CreateMap<UpdateCategoryDto, Category>()
-            .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => GenerateSlug(src.Name)))
+            .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => 
+                !string.IsNullOrWhiteSpace(src.Slug) ? src.Slug : GenerateSlug(src.Name)))
             .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => DateTime.UtcNow))
             .ForAllMembers(opt => opt.Condition((src, dest, srcMember) => srcMember != null));
 

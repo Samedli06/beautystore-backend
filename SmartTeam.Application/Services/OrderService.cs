@@ -12,14 +12,16 @@ public class OrderService : IOrderService
     private readonly ICartService _cartService;
     private readonly IProductService _productService;
     private readonly ILoyaltyService _loyaltyService;
+    private readonly IInstallmentService _installmentService;
 
-    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService, IProductService productService, ILoyaltyService loyaltyService)
+    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService, IProductService productService, ILoyaltyService loyaltyService, IInstallmentService installmentService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _cartService = cartService;
         _productService = productService;
         _loyaltyService = loyaltyService;
+        _installmentService = installmentService;
     }
 
     public async Task<OrderDto> CreateOrderFromCartAsync(Guid? userId, CreateOrderDto createOrderDto, CancellationToken cancellationToken = default)
@@ -57,6 +59,40 @@ public class OrderService : IOrderService
         // Generate order number
         var orderNumber = await GenerateOrderNumberAsync(cancellationToken);
 
+        // Handle installment selection if provided
+        decimal finalAmount = cartDto.FinalAmount;
+        int? installmentPeriod = null;
+        decimal? installmentInterestPercentage = null;
+        decimal? installmentInterestAmount = null;
+        decimal? originalAmount = null;
+
+        if (createOrderDto.InstallmentOptionId.HasValue)
+        {
+            // Validate installment selection
+            var isValid = await _installmentService.ValidateInstallmentSelectionAsync(
+                cartDto.FinalAmount, 
+                createOrderDto.InstallmentOptionId.Value, 
+                cancellationToken);
+
+            if (!isValid)
+            {
+                throw new InvalidOperationException("Invalid installment option selected");
+            }
+
+            // Calculate installment details
+            var installmentCalculation = await _installmentService.CalculateInstallmentDetailsAsync(
+                cartDto.FinalAmount,
+                createOrderDto.InstallmentOptionId.Value,
+                cancellationToken);
+
+            // Store original amount and calculate new total with interest
+            originalAmount = cartDto.FinalAmount;
+            installmentPeriod = installmentCalculation.InstallmentPeriod;
+            installmentInterestPercentage = installmentCalculation.InterestPercentage;
+            installmentInterestAmount = installmentCalculation.InterestAmount;
+            finalAmount = installmentCalculation.TotalAmount;
+        }
+
         // Create order
         var order = new Order
         {
@@ -65,9 +101,13 @@ public class OrderService : IOrderService
             UserId = user.Id,
             SubTotal = cartDto.SubTotal,
             DiscountAmount = cartDto.PromoCodeDiscountAmount,
-            TotalAmount = cartDto.FinalAmount,
+            TotalAmount = finalAmount,
             PromoCode = cartDto.AppliedPromoCode,
             PromoCodeDiscountPercentage = cartDto.PromoCodeDiscountPercentage,
+            InstallmentPeriod = installmentPeriod,
+            InstallmentInterestPercentage = installmentInterestPercentage,
+            InstallmentInterestAmount = installmentInterestAmount,
+            OriginalAmount = originalAmount,
             Status = OrderStatus.Pending,
             CustomerName = createOrderDto.CustomerName,
             CustomerEmail = createOrderDto.CustomerEmail,
@@ -271,6 +311,9 @@ public class OrderService : IOrderService
                     Currency = payment.Currency,
                     Status = payment.Status.ToString(),
                     PaymentMethod = payment.PaymentMethod,
+                    InstallmentPeriod = payment.InstallmentPeriod,
+                    InstallmentInterestAmount = payment.InstallmentInterestAmount,
+                    OriginalAmount = payment.OriginalAmount,
                     CreatedAt = payment.CreatedAt,
                     CompletedAt = payment.CompletedAt
                 };
@@ -287,6 +330,10 @@ public class OrderService : IOrderService
             TotalAmount = order.TotalAmount,
             PromoCode = order.PromoCode,
             PromoCodeDiscountPercentage = order.PromoCodeDiscountPercentage,
+            InstallmentPeriod = order.InstallmentPeriod,
+            InstallmentInterestPercentage = order.InstallmentInterestPercentage,
+            InstallmentInterestAmount = order.InstallmentInterestAmount,
+            OriginalAmount = order.OriginalAmount,
             Status = order.Status.ToString(),
             CustomerName = order.CustomerName,
             CustomerEmail = order.CustomerEmail,
