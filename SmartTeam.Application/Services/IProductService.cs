@@ -60,4 +60,7 @@ public interface IProductService
 
     // Stock Management
     Task ReduceStockAsync(Guid productId, int quantity, CancellationToken cancellationToken = default);
+    
+    // Bulk Import
+    Task<ProductImportResultDto> ImportProductsFromExcelAsync(IFormFile file, CancellationToken cancellationToken = default);
 }

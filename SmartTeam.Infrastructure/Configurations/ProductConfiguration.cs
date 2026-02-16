@@ -34,8 +34,8 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.HasIndex(p => p.Sku)
             .IsUnique();
 
-        builder.Property(p => p.IsActive)
-            .HasDefaultValue(true);
+        builder.Property(p => p.IsActive);
+            //.HasDefaultValue(true); // Commented out to force EF to send the value explicitly
 
         builder.Property(p => p.IsHotDeal)
             .HasDefaultValue(false);

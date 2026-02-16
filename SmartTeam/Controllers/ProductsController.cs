@@ -364,6 +364,28 @@ public class ProductsController : ControllerBase
     }
 
     /// <summary>
+    /// Import products from an Excel file (Admin only)
+    /// </summary>
+    [HttpPost("import")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(ProductImportResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ProductImportResultDto>> ImportProducts(IFormFile file, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _productService.ImportProductsFromExcelAsync(file, cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Get available filters for a specific category
     /// </summary>
     [HttpGet("category/{categoryId:guid}/filters")]

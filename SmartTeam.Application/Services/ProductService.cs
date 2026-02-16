@@ -28,18 +28,36 @@ public class ProductService : IProductService
     public async Task<IEnumerable<ProductListDto>> GetAllProductsAsync(UserRole? userRole = null, CancellationToken cancellationToken = default)
     {
         var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
-        var activeProducts = products.Where(p => p.IsActive);
+        
+        IEnumerable<Product> filteredProducts;
+        if (userRole == UserRole.Admin)
+        {
+            filteredProducts = products;
+        }
+        else
+        {
+            filteredProducts = products.Where(p => p.IsActive);
+        }
 
-        var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(activeProducts);
+        var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(filteredProducts);
         return productDtos;
     }
 
     public async Task<IEnumerable<ProductListDto>> GetAllProductsAsync(UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
         var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
-        var activeProducts = products.Where(p => p.IsActive);
+        
+        IEnumerable<Product> filteredProducts;
+        if (userRole == UserRole.Admin)
+        {
+            filteredProducts = products;
+        }
+        else
+        {
+            filteredProducts = products.Where(p => p.IsActive);
+        }
 
-        var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(activeProducts);
+        var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(filteredProducts);
         
         if (userId.HasValue)
         {
@@ -56,7 +74,16 @@ public class ProductService : IProductService
     {
         var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var categoryIds = await GetCategoryIdsIncludingSubcategories(categoryId, cancellationToken);
-        var filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
+        
+        IEnumerable<Product> filteredProducts;
+        if (userRole == UserRole.Admin)
+        {
+            filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId));
+        }
+        else
+        {
+            filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
+        }
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(filteredProducts);
         
@@ -67,7 +94,16 @@ public class ProductService : IProductService
     {
         var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category);
         var categoryIds = await GetCategoryIdsIncludingSubcategories(categoryId, cancellationToken);
-        var filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
+        
+        IEnumerable<Product> filteredProducts;
+        if (userRole == UserRole.Admin)
+        {
+            filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId));
+        }
+        else
+        {
+            filteredProducts = products.Where(p => categoryIds.Contains(p.CategoryId) && p.IsActive);
+        }
 
         var productDtos = _mapper.Map<IEnumerable<ProductListDto>>(filteredProducts);
         
@@ -281,7 +317,7 @@ public class ProductService : IProductService
         }
 
         var product = _mapper.Map<Product>(createProductDto);
-        product.Slug = GenerateSlug(createProductDto.Name);
+        product.Slug = GenerateSlugHelper(createProductDto.Name);
         
         // Ensure BrandId is set if provided
         if (createProductDto.BrandId.HasValue)
@@ -332,7 +368,7 @@ public class ProductService : IProductService
         {
             Id = Guid.NewGuid(),
             Name = createProductDto.Name,
-            Slug = GenerateSlug(createProductDto.Name),
+            Slug = GenerateSlugHelper(createProductDto.Name),
             Description = createProductDto.Description,
             ShortDescription = createProductDto.ShortDescription,
             Sku = createProductDto.Sku,
@@ -366,7 +402,7 @@ public class ProductService : IProductService
         return productDto;
     }
 
-    private static string GenerateSlug(string name)
+    private static string GenerateSlugHelper(string name)
     {
         return name.ToLowerInvariant()
             .Replace(" ", "-")
@@ -3108,6 +3144,190 @@ public class ProductService : IProductService
     }
 
     #endregion
+
+    public async Task<ProductImportResultDto> ImportProductsFromExcelAsync(IFormFile file, CancellationToken cancellationToken = default)
+    {
+        var result = new ProductImportResultDto();
+        
+        // 1. Validate file
+        if (file == null || file.Length == 0)
+        {
+            result.Errors.Add("File is empty or null");
+            return result;
+        }
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (extension != ".xlsx")
+        {
+            result.Errors.Add("Invalid file format. Only .xlsx is supported");
+            return result;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.CopyToAsync(stream, cancellationToken);
+            stream.Position = 0; // Reset stream position to beginning
+            
+            using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
+            var worksheet = workbook.Worksheets.FirstOrDefault();
+            
+            if (worksheet == null)
+            {
+                result.Errors.Add("Excel file is empty (no worksheets found)");
+                return result;
+            }
+
+            var rows = worksheet.RowsUsed().Skip(1); // Skip header row
+            
+            foreach (var row in rows)
+            {
+                try
+                {
+                    // 2. Parse row data
+                    var name = row.Cell(1).GetValue<string>();
+                    
+                    // Skip empty rows silently (don't count as processed or failed)
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        continue;
+                    }
+                    
+                    result.TotalProcessed++;
+
+                    var description = row.Cell(2).GetValue<string>();
+                    
+                    if (!decimal.TryParse(row.Cell(3).GetValue<string>(), out decimal price))
+                    {
+                        result.FailureCount++;
+                        result.Errors.Add($"Row {row.RowNumber()}: Invalid price format");
+                        continue;
+                    }
+
+                    decimal? discountPrice = null;
+                    var discountPriceStr = row.Cell(4).GetValue<string>();
+                    if (!string.IsNullOrWhiteSpace(discountPriceStr) && decimal.TryParse(discountPriceStr, out decimal dPrice))
+                    {
+                        discountPrice = dPrice;
+                    }
+
+                    if (!int.TryParse(row.Cell(5).GetValue<string>(), out int stockQuantity))
+                    {
+                        stockQuantity = 0; // Default to 0 if invalid
+                    }
+
+                    var sku = row.Cell(6).GetValue<string>();
+                    var categoryName = row.Cell(7).GetValue<string>();
+                    
+                    if (string.IsNullOrWhiteSpace(categoryName))
+                    {
+                        result.FailureCount++;
+                        result.Errors.Add($"Row {row.RowNumber()}: Category is required");
+                        continue;
+                    }
+
+                    var brandName = row.Cell(8).GetValue<string>();
+                    
+                    // 3. Find or create Category
+                    var category = await _unitOfWork.Repository<Category>()
+                        .FirstOrDefaultAsync(c => c.Name == categoryName, cancellationToken);
+                    
+                    if (category == null)
+                    {
+                        category = new Category
+                        {
+                            Id = Guid.NewGuid(),
+                            Name = categoryName,
+                            Slug = categoryName.ToLowerInvariant().Replace(" ", "-"),
+                            SortOrder = 0,
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        await _unitOfWork.Repository<Category>().AddAsync(category, cancellationToken);
+                    }
+
+                    // 4. Find or create Brand (if provided)
+                    Brand? brand = null;
+                    if (!string.IsNullOrWhiteSpace(brandName))
+                    {
+                        brand = await _unitOfWork.Repository<Brand>()
+                            .FirstOrDefaultAsync(b => b.Name == brandName, cancellationToken);
+                        
+                        if (brand == null)
+                        {
+                            brand = new Brand
+                            {
+                                Id = Guid.NewGuid(),
+                                Name = brandName,
+                                Slug = brandName.ToLowerInvariant().Replace(" ", "-"),
+                                IsActive = true,
+                                CreatedAt = DateTime.UtcNow
+                            };
+                            await _unitOfWork.Repository<Brand>().AddAsync(brand, cancellationToken);
+                        }
+                    }
+
+                    // 5. Create Product
+                    var product = new Product
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = name,
+                        Slug = GenerateSlugHelper(name),
+                        Description = description,
+                        Price = price,
+                        DiscountedPrice = discountPrice,
+                        StockQuantity = stockQuantity,
+                        Sku = sku,
+                        Category = category, // Use navigation property
+                        Brand = brand,       // Use navigation property
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow,
+                        ImageUrl = "/images/placeholder.png" // Default placeholder
+                    };
+
+                    // Add default primary image
+                    var defaultImage = new ProductImage
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = product.Id,
+                        ImageUrl = "/images/placeholder.png",
+                        IsPrimary = true,
+                        SortOrder = 0,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    
+                    product.Images = new List<ProductImage> { defaultImage };
+
+                    await _unitOfWork.Repository<Product>().AddAsync(product, cancellationToken);
+                    
+                    result.SuccessCount++;
+                    result.CreatedProducts.Add(new ProductImportDetailDto
+                    {
+                        Name = product.Name,
+                        Id = product.Id,
+                        IsActive = product.IsActive
+                    });
+                    Console.WriteLine($"[IMPORT] Scheduled Product for Save: {product.Name} (ID: {product.Id}) IsActive: {product.IsActive}");
+                }
+                catch (Exception ex)
+                {
+                    result.FailureCount++;
+                    result.Errors.Add($"Row {row.RowNumber()}: Error processing - {ex.Message}");
+                }
+            }
+            
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            var innerMessage = ex.InnerException?.Message ?? ex.Message;
+            result.Errors.Add($"File processing error: {innerMessage}");
+        }
+
+        return result;
+    }
+
+
     public async Task ReduceStockAsync(Guid productId, int quantity, CancellationToken cancellationToken = default)
     {
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(productId, cancellationToken);
