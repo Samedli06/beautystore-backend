@@ -122,6 +122,44 @@ public class LoyaltyService : ILoyaltyService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<decimal> DeductBalanceAsync(Guid userId, Guid orderId, decimal amount, CancellationToken cancellationToken = default)
+    {
+        if (amount <= 0) return 0;
+
+        var wallet = await _unitOfWork.Repository<Wallet>()
+            .FirstOrDefaultAsync(w => w.UserId == userId, cancellationToken);
+
+        if (wallet == null || wallet.Balance < amount)
+        {
+            throw new InvalidOperationException("Insufficient wallet balance.");
+        }
+
+        var balanceBefore = wallet.Balance;
+        var balanceAfter = wallet.Balance - amount;
+
+        wallet.Balance = balanceAfter;
+        wallet.UpdatedAt = DateTime.UtcNow;
+
+        _unitOfWork.Repository<Wallet>().Update(wallet);
+
+        var transaction = new WalletTransaction
+        {
+            WalletId = wallet.Id,
+            OrderId = orderId,
+            Amount = amount,
+            BalanceBefore = balanceBefore,
+            BalanceAfter = balanceAfter,
+            Type = WalletTransactionType.Spent,
+            Description = "Used for Order Payment",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _unitOfWork.Repository<WalletTransaction>().AddAsync(transaction, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return amount;
+    }
+
     public async Task<WalletDto> GetWalletAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var wallet = await _unitOfWork.Repository<Wallet>()

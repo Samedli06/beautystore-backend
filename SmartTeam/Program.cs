@@ -134,6 +134,13 @@ namespace SmartTeam
                     context.Request.Method, context.Request.Path, origin);
                 await next();
             });
+            
+            // Verify build version
+            app.Lifetime.ApplicationStarted.Register(() => 
+            {
+                var logger = app.Services.GetRequiredService<ILogger<Program>>();
+                logger.LogInformation("APPLICATION STARTED - BUILD VERSION WITH ORDERS ROUTE FIXED");
+            });
 
             app.UseCors("AllowFrontend");
 

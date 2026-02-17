@@ -22,6 +22,7 @@ public class OrderDto
     public decimal? InstallmentInterestPercentage { get; set; }
     public decimal? InstallmentInterestAmount { get; set; }
     public decimal? OriginalAmount { get; set; }
+    public decimal WalletAmountUsed { get; set; }
     public List<OrderItemDto> Items { get; set; } = new();
     public PaymentDto? Payment { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -62,6 +63,7 @@ public class CreateOrderDto
     public string? ShippingAddress { get; set; }
     public string? Notes { get; set; }
     public Guid? InstallmentOptionId { get; set; }
+    public decimal? WalletAmountToUse { get; set; }
 }
 
 public class UpdateOrderStatusDto

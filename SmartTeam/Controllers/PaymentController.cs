@@ -65,8 +65,37 @@ public class PaymentController : ControllerBase
                 return BadRequest(new { error = "Cart is empty or could not create order" });
             }
 
-            // Update order status to PaymentInitiated (effectively "Unpaid")
-            await _orderService.UpdateOrderStatusAsync(order.Id, OrderStatus.PaymentInitiated, cancellationToken);
+            // If order is already paid (e.g. fully covered by wallet)
+            if (order.Status == OrderStatus.Paid.ToString() || order.TotalAmount <= 0)
+            {
+                // Create completed payment record for history
+                var completedPayment = new Payment
+                {
+                    Id = Guid.NewGuid(),
+                    OrderId = order.Id,
+                    PendingOrderId = null,
+                    EpointTransactionId = $"WALLET_{Guid.NewGuid()}",
+                    Amount = order.TotalAmount, // 0 usually
+                    Currency = "AZN",
+                    Status = PaymentStatus.Completed,
+                    PaymentMethod = "Wallet",
+                    CreatedAt = DateTime.UtcNow,
+                    CompletedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Repository<Payment>().AddAsync(completedPayment, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                
+                await _orderService.LinkPaymentToOrderAsync(order.Id, completedPayment.Id, cancellationToken);
+
+                return Ok(new EpointPaymentResponse
+                {
+                    status = "success",
+                    message = "Order paid via Wallet",
+                    transaction_id = completedPayment.EpointTransactionId,
+                    payment_url = $"https://gunaybeauty.com/payment/success?orderId={order.Id}&transactionId={completedPayment.EpointTransactionId}&status=paid"
+                });
+            }
 
             // Create payment record linked to order
             var payment = new Payment

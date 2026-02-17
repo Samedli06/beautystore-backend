@@ -117,6 +117,32 @@ public class OrderService : IOrderService
             CreatedAt = DateTime.UtcNow
         };
 
+        // Handle Wallet Usage
+        decimal walletDeduction = 0;
+        if (createOrderDto.WalletAmountToUse.HasValue && createOrderDto.WalletAmountToUse.Value > 0 && user.Id != Guid.Parse("00000000-0000-0000-0000-000000000001"))
+        {
+            var wallet = await _loyaltyService.GetWalletAsync(user.Id, cancellationToken);
+            if (wallet != null)
+            {
+                if (wallet.Balance < createOrderDto.WalletAmountToUse.Value)
+                {
+                    throw new InvalidOperationException($"Insufficient wallet balance. Available: {wallet.Balance}, Requested: {createOrderDto.WalletAmountToUse.Value}");
+                }
+
+                // Use the requested amount, but don't exceed order total
+                walletDeduction = Math.Min(createOrderDto.WalletAmountToUse.Value, order.TotalAmount);
+                
+                order.WalletAmountUsed = walletDeduction;
+                order.TotalAmount -= walletDeduction;
+            }
+        }
+
+        // Check if fully paid via wallet
+        if (order.TotalAmount == 0 && walletDeduction > 0)
+        {
+            order.Status = OrderStatus.Paid;
+        }
+
         // Create order items
         foreach (var cartItem in cartDto.Items)
         {
@@ -138,6 +164,22 @@ public class OrderService : IOrderService
         // Save order
         await _unitOfWork.Repository<Order>().AddAsync(order, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Deduct from wallet if used
+        if (walletDeduction > 0)
+        {
+            await _loyaltyService.DeductBalanceAsync(user.Id, order.Id, walletDeduction, cancellationToken);
+        }
+
+        // If order is paid (fully via wallet), reduce stock immediately
+        if (order.Status == OrderStatus.Paid)
+        {
+             // Clear cart items from stock
+             foreach (var cartItem in cartDto.Items)
+             {
+                 await _productService.ReduceStockAsync(cartItem.ProductId, cartItem.Quantity, cancellationToken);
+             }
+        }
 
         // Clear cart after order creation
         await _cartService.ClearCartAsync(userId, cancellationToken);
@@ -237,6 +279,73 @@ public class OrderService : IOrderService
         }
 
         return orderDtos;
+    }
+
+    public async Task<PagedResultDto<OrderDto>> GetAllOrdersPagedAsync(int page, int pageSize, string? status, CancellationToken cancellationToken = default)
+    {
+        // Add console logging for debugging
+        Console.WriteLine($"GetAllOrdersPagedAsync called with page={page}, pageSize={pageSize}, status={status}");
+
+        var query = await _unitOfWork.Repository<Order>().GetAllAsync(cancellationToken);
+        var orders = query.AsQueryable();
+
+        // Apply status filter
+        if (!string.IsNullOrEmpty(status))
+        {
+            if (status.Equals("Paid", StringComparison.OrdinalIgnoreCase))
+            {
+                orders = orders.Where(o => o.Status == OrderStatus.Paid);
+            }
+            else if (status.Equals("Unpaid", StringComparison.OrdinalIgnoreCase))
+            {
+                // Unpaid includes Pending and PaymentInitiated
+                orders = orders.Where(o => 
+                    o.Status == OrderStatus.Pending || 
+                    o.Status == OrderStatus.PaymentInitiated);
+            }
+            else if (status.Equals("Error", StringComparison.OrdinalIgnoreCase) || 
+                     status.Equals("Failed", StringComparison.OrdinalIgnoreCase))
+            {
+                orders = orders.Where(o => o.Status == OrderStatus.Failed);
+            }
+            else if (Enum.TryParse<OrderStatus>(status, true, out var parsedStatus))
+            {
+                orders = orders.Where(o => o.Status == parsedStatus);
+            }
+        }
+
+        // Calculate total count
+        var totalCount = orders.Count();
+        Console.WriteLine($"Total count: {totalCount}");
+
+        // Apply pagination
+        var pagedOrders = orders
+            .OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        // Map to DTOs
+        var orderDtos = new List<OrderDto>();
+        foreach (var order in pagedOrders)
+        {
+            orderDtos.Add(await MapOrderToDto(order, cancellationToken));
+        }
+
+        // Calculate total pages
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+        Console.WriteLine($"Total pages: {totalPages}");
+
+        return new PagedResultDto<OrderDto>
+        {
+            Items = orderDtos,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalPages,
+            HasNextPage = page < totalPages,
+            HasPreviousPage = page > 1
+        };
     }
 
 

@@ -38,6 +38,7 @@ public class Order
     public decimal? InstallmentInterestPercentage { get; set; }
     public decimal? InstallmentInterestAmount { get; set; }
     public decimal? OriginalAmount { get; set; }
+    public decimal WalletAmountUsed { get; set; }
     
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

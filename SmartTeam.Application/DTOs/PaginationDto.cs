@@ -79,7 +79,7 @@ public class PagedResultDto<T>
     /// <summary>
     /// Starting index of items in the current page (1-based)
     /// </summary>
-    public int StartIndex => (Page - 1) * PageSize + 1;
+    public int StartIndex => TotalCount > 0 ? (Page - 1) * PageSize + 1 : 0;
 
     /// <summary>
     /// Ending index of items in the current page (1-based)

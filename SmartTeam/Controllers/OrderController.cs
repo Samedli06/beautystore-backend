@@ -7,7 +7,8 @@ using System.Security.Claims;
 namespace SmartTeam.Controllers;
 
 [ApiController]
-[Route("api/v1/[controller]")]
+[Route("api/v1/[controller]")] // api/v1/Order
+[Route("api/v1/Orders")]        // api/v1/Orders (Explicit match)
 public class OrderController : ControllerBase
 {
     private readonly IOrderService _orderService;
@@ -112,43 +113,19 @@ public class OrderController : ControllerBase
     /// </summary>
     [HttpGet("admin/all")]
     [Authorize(Roles = "Admin")]
-    [ProducesResponseType(typeof(List<OrderDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResultDto<OrderDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<List<OrderDto>>> GetAllOrders(
+    public async Task<ActionResult<PagedResultDto<OrderDto>>> GetAllOrders(
         [FromQuery] string? status,
-        CancellationToken cancellationToken)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var orders = await _orderService.GetAllOrdersAsync(cancellationToken);
-            
-            if (!string.IsNullOrEmpty(status))
-            {
-                if (status.Equals("Paid", StringComparison.OrdinalIgnoreCase))
-                {
-                    orders = orders.Where(o => o.Status == "Paid").ToList();
-                }
-                else if (status.Equals("Unpaid", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Unpaid includes Pending and PaymentInitiated
-                    orders = orders.Where(o => 
-                        o.Status == "Pending" || 
-                        o.Status == "PaymentInitiated").ToList();
-                }
-                else if (status.Equals("Error", StringComparison.OrdinalIgnoreCase) || 
-                         status.Equals("Failed", StringComparison.OrdinalIgnoreCase))
-                {
-                    orders = orders.Where(o => o.Status == "Failed").ToList();
-                }
-                else
-                {
-                    // Generic status match
-                    orders = orders.Where(o => o.Status.Equals(status, StringComparison.OrdinalIgnoreCase)).ToList();
-                }
-            }
-            
-            return Ok(orders);
+            var result = await _orderService.GetAllOrdersPagedAsync(page, pageSize, status, cancellationToken);
+            return Ok(result);
         }
         catch (Exception ex)
         {

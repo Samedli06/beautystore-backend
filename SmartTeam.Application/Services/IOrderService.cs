@@ -44,4 +44,9 @@ public interface IOrderService
     /// Get all paid orders (Admin only)
     /// </summary>
     Task<List<OrderDto>> GetPaidOrdersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get all orders with pagination (Admin only)
+    /// </summary>
+    Task<PagedResultDto<OrderDto>> GetAllOrdersPagedAsync(int page, int pageSize, string? status, CancellationToken cancellationToken = default);
 }
