@@ -80,47 +80,7 @@ public class CartController : ControllerBase
                 return BadRequest("Request body is required.");
             }
 
-            // Convert string ProductId to Guid - try multiple formats and cleaning
-            var productIdString = requestDto.ProductId?.Trim();
-            
-            // Clean invisible characters
-            if (!string.IsNullOrEmpty(productIdString))
-            {
-                productIdString = productIdString.Replace("\u200E", "")
-                                               .Replace("\u200F", "")
-                                               .Replace("\u202A", "")
-                                               .Replace("\u202B", "")
-                                               .Replace("\u202C", "")
-                                               .Replace("\u202D", "")
-                                               .Replace("\u202E", "");
-                
-                // If it looks like it has an extra character at the end (e.g. 37 chars)
-                if (productIdString.Length == 37)
-                {
-                    var validChars = productIdString.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray();
-                    if (validChars.Length > 36)
-                    {
-                        // Take only the first 36 valid chars if it's still too long
-                        productIdString = new string(validChars.Take(36).ToArray());
-                    }
-                    else
-                    {
-                        productIdString = new string(validChars);
-                    }
-                }
-            }
-            
-            if (!Guid.TryParse(productIdString, out var productId))
-            {
-                // Try alternate formats
-                if (!Guid.TryParseExact(productIdString, "D", out productId) &&
-                    !Guid.TryParseExact(productIdString, "N", out productId) &&
-                    !Guid.TryParseExact(productIdString, "B", out productId) &&
-                    !Guid.TryParseExact(productIdString, "P", out productId))
-                {
-                    return BadRequest($"Invalid ProductId format: '{requestDto.ProductId}'");
-                }
-            }
+            var productId = ParseGuid(requestDto.ProductId);
 
             var addToCartDto = new AddToCartDto
             {
@@ -129,32 +89,48 @@ public class CartController : ControllerBase
             };
 
             Guid? userId = null;
-            
-            // Try to get user ID if authenticated, but don't require it
-            try
-            {
-                // Check if User is authenticated first
-                if (User.Identity?.IsAuthenticated == true)
-                {
-                    userId = GetCurrentUserId();
-                }
-            }
-            catch (Exception)
-            {
-                // User is not authenticated, continue without user ID
-            }
+            try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
 
             var cart = await _cartService.AddToCartAsync(userId, addToCartDto, cancellationToken);
             return Ok(cart);
         }
-        catch (ArgumentException ex)
+        catch (ArgumentException ex) { return BadRequest(ex.Message); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    /// <summary>
+    /// Bulk add products to cart
+    /// </summary>
+    [HttpPost("bulk-items")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<CartDto>> BulkAddToCart([FromBody] BulkAddToCartRequestDto requestDto, CancellationToken cancellationToken)
+    {
+        try
         {
-            return BadRequest(ex.Message);
+            if (requestDto == null || !requestDto.Items.Any())
+            {
+                return BadRequest("Items are required for bulk add.");
+            }
+
+            var bulkAddToCartDto = new BulkAddToCartDto
+            {
+                Items = requestDto.Items.Select(item => new AddToCartDto
+                {
+                    ProductId = ParseGuid(item.ProductId),
+                    Quantity = item.Quantity
+                }).ToList()
+            };
+
+            Guid? userId = null;
+            try { if (User.Identity?.IsAuthenticated == true) userId = GetCurrentUserId(); } catch { }
+
+            var cart = await _cartService.BulkAddToCartAsync(userId, bulkAddToCartDto, cancellationToken);
+            return Ok(cart);
         }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        catch (ArgumentException ex) { return BadRequest(ex.Message); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
     }
 
     /// <summary>
@@ -305,5 +281,31 @@ public class CartController : ControllerBase
             throw new UnauthorizedAccessException("User not authenticated.");
         }
         return userId;
+    }
+
+    private Guid ParseGuid(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException("ID is required.");
+        }
+
+        var cleaned = value.Trim()
+            .Replace("\u200E", "").Replace("\u200F", "").Replace("\u202A", "")
+            .Replace("\u202B", "").Replace("\u202C", "").Replace("\u202D", "").Replace("\u202E", "");
+
+        if (cleaned.Length == 37)
+        {
+            var validChars = cleaned.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray();
+            cleaned = validChars.Length > 36 ? new string(validChars.Take(36).ToArray()) : new string(validChars);
+        }
+
+        if (Guid.TryParse(cleaned, out var guid)) return guid;
+        if (Guid.TryParseExact(cleaned, "D", out guid)) return guid;
+        if (Guid.TryParseExact(cleaned, "N", out guid)) return guid;
+        if (Guid.TryParseExact(cleaned, "B", out guid)) return guid;
+        if (Guid.TryParseExact(cleaned, "P", out guid)) return guid;
+
+        throw new ArgumentException($"Invalid ID format: '{value}'");
     }
 }

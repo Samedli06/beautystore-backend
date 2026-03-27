@@ -11,7 +11,9 @@ public class MappingProfile : Profile
         // Category mappings
         CreateMap<Category, CategoryDto>()
             .ForMember(dest => dest.ParentCategoryName, opt => opt.MapFrom(src => src.ParentCategory != null ? src.ParentCategory.Name : null))
-            .ForMember(dest => dest.SubCategories, opt => opt.MapFrom(src => src.SubCategories.Where(sc => sc.IsActive)));
+            .ForMember(dest => dest.SubCategories, opt => opt.MapFrom(src => src.SubCategories.Where(sc => sc.IsActive)))
+            .ForMember(dest => dest.ImageUrl, opt => opt.MapFrom(src => 
+                (!string.IsNullOrEmpty(src.ImageUrl) && src.ImageUrl != "/images/placeholder.png") ? src.ImageUrl : "https://img.freepik.com/premium-vector/blue-car-flat-style-illustration-isolated-white-background_108231-795.jpg?semt=ais_hybrid&w=740&q=80"));
         CreateMap<CreateCategoryDto, Category>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => Guid.NewGuid()))
             .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => GenerateSlug(src.Name)))
@@ -25,14 +27,16 @@ public class MappingProfile : Profile
 
         // Product mappings
         CreateMap<Product, ProductDto>()
-            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name));
+            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
+            .ForMember(dest => dest.ImageUrl, opt => opt.MapFrom(src => 
+                (!string.IsNullOrEmpty(src.ImageUrl) && src.ImageUrl != "/images/placeholder.png") ? src.ImageUrl : "https://img.freepik.com/premium-vector/blue-car-flat-style-illustration-isolated-white-background_108231-795.jpg?semt=ais_hybrid&w=740&q=80"));
         CreateMap<Product, ProductListDto>()
             .ForMember(dest => dest.CategoryId, opt => opt.MapFrom(src => src.CategoryId))
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
             .ForMember(dest => dest.PrimaryImageUrl, opt => opt.MapFrom(src => 
-                !string.IsNullOrEmpty(src.ImageUrl) ? src.ImageUrl :
-                src.Images.FirstOrDefault(i => i.IsPrimary) != null ? src.Images.FirstOrDefault(i => i.IsPrimary)!.ImageUrl : 
-                src.Images.FirstOrDefault() != null ? src.Images.FirstOrDefault()!.ImageUrl : null));
+                (!string.IsNullOrEmpty(src.ImageUrl) && src.ImageUrl != "/images/placeholder.png") ? src.ImageUrl :
+                src.Images.FirstOrDefault(i => i.IsPrimary && i.ImageUrl != "/images/placeholder.png") != null ? src.Images.FirstOrDefault(i => i.IsPrimary && i.ImageUrl != "/images/placeholder.png")!.ImageUrl : 
+                src.Images.FirstOrDefault(i => i.ImageUrl != "/images/placeholder.png") != null ? src.Images.FirstOrDefault(i => i.ImageUrl != "/images/placeholder.png")!.ImageUrl : "https://img.freepik.com/premium-vector/blue-car-flat-style-illustration-isolated-white-background_108231-795.jpg?semt=ais_hybrid&w=740&q=80"));
         CreateMap<CreateProductDto, Product>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => Guid.NewGuid()))
             .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => GenerateSlug(src.Name)))
@@ -134,7 +138,10 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.FileSizeFormatted, opt => opt.Ignore()); // Will be set by service
 
         // Brand mappings
-        CreateMap<Brand, BrandDto>();
+        CreateMap<Brand, BrandDto>()
+            .ForMember(dest => dest.LogoUrl, opt => opt.MapFrom(src => 
+                (!string.IsNullOrEmpty(src.LogoUrl) && src.LogoUrl != "/images/placeholder.png") ? src.LogoUrl : "https://img.freepik.com/premium-vector/blue-car-flat-style-illustration-isolated-white-background_108231-795.jpg?semt=ais_hybrid&w=740&q=80"))
+            .ForMember(dest => dest.ProductCount, opt => opt.MapFrom(src => src.Products.Count));
         CreateMap<CreateBrandDto, Brand>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => Guid.NewGuid()))
             .ForMember(dest => dest.Slug, opt => opt.MapFrom(src => GenerateSlug(src.Name)))

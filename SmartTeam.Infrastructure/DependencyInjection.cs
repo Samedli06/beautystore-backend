@@ -35,6 +35,8 @@ public static class DependencyInjection
         services.AddScoped<SmartTeam.Application.Services.IFileUploadService, SmartTeam.Infrastructure.Services.FileUploadService>();
         services.AddScoped<SmartTeam.Application.Services.IEmailService, SmartTeam.Infrastructure.Services.EmailService>();
         services.AddScoped<SmartTeam.Application.Services.IImageCompressionService, SmartTeam.Infrastructure.Services.ImageCompressionService>();
+        services.AddScoped<SmartTeam.Application.Services.IPdfService, SmartTeam.Infrastructure.Services.PdfService>();
+        services.AddScoped<SmartTeam.Application.Services.IStatisticsService, SmartTeam.Infrastructure.Services.StatisticsService>();
 
         return services;
     }

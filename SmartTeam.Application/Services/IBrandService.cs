@@ -17,4 +17,5 @@ public interface IBrandService
     
     // Pagination methods
     Task<PagedResultDto<BrandDto>> GetBrandsPaginatedAsync(BrandPaginationRequestDto request, CancellationToken cancellationToken = default);
+    Task<IEnumerable<BrandDto>> SearchBrandsAsync(string searchTerm, CancellationToken cancellationToken = default);
 }

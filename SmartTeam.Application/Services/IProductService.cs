@@ -17,7 +17,7 @@ public interface IProductService
     Task<ProductDto?> GetProductByIdAsync(Guid id, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default);
     Task<ProductDto?> GetProductBySlugAsync(string slug, UserRole? userRole = null, CancellationToken cancellationToken = default);
     Task<ProductDto> CreateProductAsync(CreateProductDto createProductDto, CancellationToken cancellationToken = default);
-    Task<ProductDto> CreateProductWithImageAsync(CreateProductWithImageDto createProductDto, IFormFile imageFile, CancellationToken cancellationToken = default);
+    Task<ProductDto> CreateProductWithImageAsync(CreateProductWithImageDto createProductDto, IFormFile imageFile, IFormFileCollection? detailImageFiles, CancellationToken cancellationToken = default);
     Task<ProductDto> UpdateProductAsync(Guid id, UpdateProductDto updateProductDto, CancellationToken cancellationToken = default);
     Task<ProductDto> UpdateProductWithImageAsync(Guid id, UpdateProductDto updateProductDto, IFormFile? imageFile, CancellationToken cancellationToken = default);
     Task<ProductDto> UpdateProductWithFilesAsync(Guid id, UpdateProductDto updateProductDto, IFormFile? imageFile, IFormFile[]? detailImageFiles, IFormFile? pdfFile, Guid? userId, CancellationToken cancellationToken = default);
@@ -39,7 +39,7 @@ public interface IProductService
     Task<bool> DeleteProductSpecificationsAsync(Guid productId, CancellationToken cancellationToken = default);
     
     // Product filtering methods
-    Task<FilteredProductsResultDto> GetFilteredProductsAsync(ProductFilterCriteriaDto criteria, UserRole? userRole = null, CancellationToken cancellationToken = default);
+    Task<FilteredProductsResultDto> GetFilteredProductsAsync(ProductFilterCriteriaDto criteria, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default);
     
     // Pagination methods
     Task<PagedResultDto<ProductListDto>> GetProductsPaginatedAsync(ProductPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default);

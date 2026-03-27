@@ -64,9 +64,47 @@ namespace SmartTeam.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("ButtonBorderRadius")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(8);
+
+                    b.Property<string>("ButtonColor")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("#ffffff");
+
+                    b.Property<int>("ButtonFontSize")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ButtonPaddingX")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ButtonPaddingY")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ButtonPositionX")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(50);
+
+                    b.Property<int>("ButtonPositionY")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(65);
+
                     b.Property<string>("ButtonText")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ButtonTextColor")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("#000000");
 
                     b.Property<bool>("ButtonVisible")
                         .HasColumnType("bit");
@@ -79,6 +117,28 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DescriptionColor")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("#eeeeee");
+
+                    b.Property<int>("DescriptionFontSize")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(16);
+
+                    b.Property<int>("DescriptionPositionX")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(50);
+
+                    b.Property<int>("DescriptionPositionY")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(40);
 
                     b.Property<bool>("DescriptionVisible")
                         .HasColumnType("bit");
@@ -116,6 +176,35 @@ namespace SmartTeam.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("TitleAlign")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("center");
+
+                    b.Property<string>("TitleColor")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("#ffffff");
+
+                    b.Property<int>("TitleFontSize")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(32);
+
+                    b.Property<int>("TitlePositionX")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(50);
+
+                    b.Property<int>("TitlePositionY")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(20);
 
                     b.Property<bool>("TitleVisible")
                         .HasColumnType("bit");
@@ -1237,6 +1326,127 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.ToTable("PromoCodeUsages");
                 });
 
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizAnswerOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AnswerCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AnswerText")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SubText")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AnswerCode")
+                        .IsUnique();
+
+                    b.HasIndex("QuestionId");
+
+                    b.ToTable("QuizAnswerOptions");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizQuestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StepKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("QuizQuestions");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RuleDescription")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("QuizRules");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizRuleAnswer", b =>
+                {
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AnswerOptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RuleId", "AnswerOptionId");
+
+                    b.HasIndex("AnswerOptionId");
+
+                    b.ToTable("QuizRuleAnswers");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizRuleProduct", b =>
+                {
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RuleId", "ProductId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("QuizRuleProducts");
+                });
+
             modelBuilder.Entity("SmartTeam.Domain.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1698,6 +1908,55 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizAnswerOption", b =>
+                {
+                    b.HasOne("SmartTeam.Domain.Entities.QuizQuestion", "Question")
+                        .WithMany("AnswerOptions")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Question");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizRuleAnswer", b =>
+                {
+                    b.HasOne("SmartTeam.Domain.Entities.QuizAnswerOption", "AnswerOption")
+                        .WithMany("RuleAnswers")
+                        .HasForeignKey("AnswerOptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartTeam.Domain.Entities.QuizRule", "Rule")
+                        .WithMany("Answers")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AnswerOption");
+
+                    b.Navigation("Rule");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizRuleProduct", b =>
+                {
+                    b.HasOne("SmartTeam.Domain.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartTeam.Domain.Entities.QuizRule", "Rule")
+                        .WithMany("Products")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Rule");
+                });
+
             modelBuilder.Entity("SmartTeam.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("SmartTeam.Domain.Entities.User", "User")
@@ -1813,6 +2072,23 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Navigation("Carts");
 
                     b.Navigation("Usages");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizAnswerOption", b =>
+                {
+                    b.Navigation("RuleAnswers");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizQuestion", b =>
+                {
+                    b.Navigation("AnswerOptions");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.QuizRule", b =>
+                {
+                    b.Navigation("Answers");
+
+                    b.Navigation("Products");
                 });
 
             modelBuilder.Entity("SmartTeam.Domain.Entities.User", b =>

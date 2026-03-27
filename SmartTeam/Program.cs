@@ -29,6 +29,8 @@ namespace SmartTeam
                         "https://localhost:5173",
                         "http://localhost:7222",
                         "https://localhost:7222",
+                        "http://localhost:3000",
+                        "https://localhost:3000",
                         "https://gunaybeauty.com",
                         "http://gunaybeauty.com",
                         "https://www.gunaybeauty.com",
@@ -177,7 +179,6 @@ namespace SmartTeam
             // Disable HTTPS redirection to avoid mixed content issues
             // app.UseHttpsRedirection();
             app.UseStaticFiles();
-            app.UseDefaultFiles();
 
             app.UseAuthentication();
             app.UseAuthorization();
@@ -189,7 +190,6 @@ namespace SmartTeam
 
             app.MapControllers();
 
-            app.MapFallbackToFile("index.html");
             app.Run();
         }
     }

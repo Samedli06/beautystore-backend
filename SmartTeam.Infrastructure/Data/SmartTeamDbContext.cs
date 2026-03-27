@@ -38,6 +38,11 @@ public class SmartTeamDbContext : DbContext
     public DbSet<AppSetting> AppSettings { get; set; }
     public DbSet<InstallmentConfiguration> InstallmentConfigurations { get; set; }
     public DbSet<InstallmentOption> InstallmentOptions { get; set; }
+    public DbSet<QuizQuestion> QuizQuestions { get; set; }
+    public DbSet<QuizAnswerOption> QuizAnswerOptions { get; set; }
+    public DbSet<QuizRule> QuizRules { get; set; }
+    public DbSet<QuizRuleAnswer> QuizRuleAnswers { get; set; }
+    public DbSet<QuizRuleProduct> QuizRuleProducts { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

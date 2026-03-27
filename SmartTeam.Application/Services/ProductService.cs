@@ -331,7 +331,7 @@ public class ProductService : IProductService
         return _mapper.Map<ProductDto>(product);
     }
 
-    public async Task<ProductDto> CreateProductWithImageAsync(CreateProductWithImageDto createProductDto, IFormFile imageFile, CancellationToken cancellationToken = default)
+    public async Task<ProductDto> CreateProductWithImageAsync(CreateProductWithImageDto createProductDto, IFormFile imageFile, IFormFileCollection? detailImageFiles, CancellationToken cancellationToken = default)
     {
         // Validate image file
         if (imageFile == null || imageFile.Length == 0)
@@ -389,6 +389,28 @@ public class ProductService : IProductService
         // Add product with all related data
         await _unitOfWork.Repository<Product>().AddAsync(product, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Upload and save detail images if provided
+        if (detailImageFiles != null && detailImageFiles.Any())
+        {
+            var imageUrls = await _fileUploadService.UploadMultipleFilesAsync(detailImageFiles, "product-details");
+            
+            for (int i = 0; i < imageUrls.Count; i++)
+            {
+                var productImage = new ProductImage
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = product.Id,
+                    ImageUrl = imageUrls[i],
+                    IsDetailImage = true,
+                    IsPrimary = false,
+                    SortOrder = 999 + i,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _unitOfWork.Repository<ProductImage>().AddAsync(productImage, cancellationToken);
+            }
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         // Get the created product with all relationships for proper mapping
         var createdProduct = await _unitOfWork.Repository<Product>()
@@ -1151,7 +1173,7 @@ public class ProductService : IProductService
             StockStatus = GetStockStatus(product.StockQuantity),
             StockStatusText = GetStockStatusText(product.StockQuantity),
             CategoryName = product.Category?.Name ?? "Unknown",
-            ImageUrl = product.ImageUrl,
+            ImageUrl = (!string.IsNullOrEmpty(product.ImageUrl) && product.ImageUrl != "/images/placeholder.png") ? product.ImageUrl : "https://img.freepik.com/premium-vector/blue-car-flat-style-illustration-isolated-white-background_108231-795.jpg?semt=ais_hybrid&w=740&q=80",
             IsActive = product.IsActive,
             CreatedAt = product.CreatedAt
         }).OrderBy(p => p.StockStatus).ThenBy(p => p.StockQuantity).ToList();
@@ -1571,7 +1593,7 @@ public class ProductService : IProductService
         return true;
     }
 
-    public async Task<FilteredProductsResultDto> GetFilteredProductsAsync(ProductFilterCriteriaDto criteria, UserRole? userRole = null, CancellationToken cancellationToken = default)
+    public async Task<FilteredProductsResultDto> GetFilteredProductsAsync(ProductFilterCriteriaDto criteria, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
         if (criteria.Page <= 0) criteria.Page = 1;
         if (criteria.PageSize <= 0) criteria.PageSize = 20;
@@ -1612,36 +1634,25 @@ public class ProductService : IProductService
             System.Console.WriteLine($"DEBUG: Products after search term filter ('{criteria.SearchTerm}'): {products.Count()}");
         }
 
-        if (criteria.CategoryId.HasValue)
+        if (criteria.CategoryIds != null && criteria.CategoryIds.Any())
         {
-            var categoryIds = await GetCategoryIdsIncludingSubcategories(criteria.CategoryId.Value, cancellationToken);
+            var aggregatedCategoryIds = new List<Guid>();
+            foreach (var catId in criteria.CategoryIds)
+            {
+                var categoryIds = await GetCategoryIdsIncludingSubcategories(catId, cancellationToken);
+                aggregatedCategoryIds.AddRange(categoryIds);
+            }
+            aggregatedCategoryIds = aggregatedCategoryIds.Distinct().ToList();
             
-            System.Console.WriteLine($"DEBUG: Category filter for {criteria.CategoryId.Value}");
-            System.Console.WriteLine($"DEBUG: Found category IDs: {string.Join(", ", categoryIds)}");
+            System.Console.WriteLine($"DEBUG: Category filter for {string.Join(", ", criteria.CategoryIds)}");
+            System.Console.WriteLine($"DEBUG: Found aggregated category IDs: {string.Join(", ", aggregatedCategoryIds)}");
             System.Console.WriteLine($"DEBUG: Total products before category filter: {products.Count()}");
             
             var productsList = products.ToList();
             System.Console.WriteLine($"DEBUG: Products converted to list, count: {productsList.Count}");
             
-            var filteredProducts = productsList.Where(p => categoryIds.Contains(p.CategoryId)).ToList();
+            var filteredProducts = productsList.Where(p => aggregatedCategoryIds.Contains(p.CategoryId)).ToList();
             System.Console.WriteLine($"DEBUG: Products after category filter: {filteredProducts.Count()}");
-            
-            System.Console.WriteLine($"DEBUG: Showing first 10 products and their categories:");
-            foreach (var product in productsList.Take(10))
-            {
-                var isInTargetCategories = categoryIds.Contains(product.CategoryId);
-                System.Console.WriteLine($"DEBUG: Product '{product.Name}' has CategoryId: {product.CategoryId} - Matches filter: {isInTargetCategories}");
-            }
-            
-            var categoryDistribution = productsList.GroupBy(p => p.CategoryId)
-                .Select(g => new { CategoryId = g.Key, Count = g.Count() })
-                .ToList();
-            System.Console.WriteLine($"DEBUG: Product distribution by category:");
-            foreach (var dist in categoryDistribution.Take(10))
-            {
-                var isTargetCategory = categoryIds.Contains(dist.CategoryId);
-                System.Console.WriteLine($"DEBUG: CategoryId {dist.CategoryId}: {dist.Count} products - Is target: {isTargetCategory}");
-            }
             
             products = filteredProducts.AsQueryable();
             
@@ -1695,6 +1706,12 @@ public class ProductService : IProductService
             .Skip((criteria.Page - 1) * criteria.PageSize)
             .Take(criteria.PageSize)
             .ToList();
+
+        if (userId.HasValue)
+        {
+            await ApplyFavoriteStatusToProductList(pagedProducts, userId.Value, cancellationToken);
+        }
+
         await PopulateCategoryBreadcrumbs(pagedProducts, cancellationToken);
 
         // Get applied filters for response
@@ -2085,104 +2102,51 @@ public class ProductService : IProductService
     {
         try
         {
-            // Delete all data in the correct order to respect foreign key constraints
-            var productAttributeValues = await _unitOfWork.Repository<ProductAttributeValue>().FindAsync(x => true, cancellationToken);
-            if (productAttributeValues.Any())
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+            // 1. Delete Leaves (Dependencies)
+            var leafTables = new[]
             {
-                _unitOfWork.Repository<ProductAttributeValue>().RemoveRange(productAttributeValues);
+                "ProductAttributeValues", "ProductImages", "ProductSpecifications", 
+                "ProductPdfs", "DownloadableFiles", "UserFavorites", 
+                "CartItems", "OrderItems", "PromoCodeUsages", 
+                "PasswordResetTokens", "WalletTransactions", "PendingOrders"
+            };
+
+            foreach (var table in leafTables)
+            {
+                await _unitOfWork.ExecuteSqlRawAsync($"DELETE FROM [{table}]");
             }
 
-            var productImages = await _unitOfWork.Repository<ProductImage>().FindAsync(x => true, cancellationToken);
-            if (productImages.Any())
+            // 2. Delete Intermediate Hierarchy
+            var intermediateTables = new[]
             {
-                _unitOfWork.Repository<ProductImage>().RemoveRange(productImages);
+                "Orders", "Payments", "Carts", "Wallets", "PromoCodes", "RefreshTokens"
+            };
+
+            foreach (var table in intermediateTables)
+            {
+                await _unitOfWork.ExecuteSqlRawAsync($"DELETE FROM [{table}]");
             }
 
-
-
-            var productSpecifications = await _unitOfWork.Repository<ProductSpecification>().FindAsync(x => true, cancellationToken);
-            if (productSpecifications.Any())
+            // 3. Delete Masters
+            var masterTables = new[]
             {
-                _unitOfWork.Repository<ProductSpecification>().RemoveRange(productSpecifications);
+                "Products", "FilterOptions", "Filters", "Banners", "Brand", 
+                "Categories", "Users", "AppSettings", 
+                "InstallmentOptions", "InstallmentConfigurations"
+            };
+
+            foreach (var table in masterTables)
+            {
+                await _unitOfWork.ExecuteSqlRawAsync($"DELETE FROM [{table}]");
             }
 
-            var productPdfs = await _unitOfWork.Repository<ProductPdf>().FindAsync(x => true, cancellationToken);
-            if (productPdfs.Any())
-            {
-                _unitOfWork.Repository<ProductPdf>().RemoveRange(productPdfs);
-            }
-
-            var downloadableFiles = await _unitOfWork.Repository<DownloadableFile>().FindAsync(x => true, cancellationToken);
-            if (downloadableFiles.Any())
-            {
-                _unitOfWork.Repository<DownloadableFile>().RemoveRange(downloadableFiles);
-            }
-
-            var userFavorites = await _unitOfWork.Repository<UserFavorite>().FindAsync(x => true, cancellationToken);
-            if (userFavorites.Any())
-            {
-                _unitOfWork.Repository<UserFavorite>().RemoveRange(userFavorites);
-            }
-
-            var cartItems = await _unitOfWork.Repository<CartItem>().FindAsync(x => true, cancellationToken);
-            if (cartItems.Any())
-            {
-                _unitOfWork.Repository<CartItem>().RemoveRange(cartItems);
-            }
-
-            var carts = await _unitOfWork.Repository<Cart>().FindAsync(x => true, cancellationToken);
-            if (carts.Any())
-            {
-                _unitOfWork.Repository<Cart>().RemoveRange(carts);
-            }
-
-            var refreshTokens = await _unitOfWork.Repository<RefreshToken>().FindAsync(x => true, cancellationToken);
-            if (refreshTokens.Any())
-            {
-                _unitOfWork.Repository<RefreshToken>().RemoveRange(refreshTokens);
-            }
-
-            var products = await _unitOfWork.Repository<Product>().FindAsync(x => true, cancellationToken);
-            if (products.Any())
-            {
-                _unitOfWork.Repository<Product>().RemoveRange(products);
-            }
-
-            var filterOptions = await _unitOfWork.Repository<FilterOption>().FindAsync(x => true, cancellationToken);
-            if (filterOptions.Any())
-            {
-                _unitOfWork.Repository<FilterOption>().RemoveRange(filterOptions);
-            }
-
-            var filters = await _unitOfWork.Repository<Filter>().FindAsync(x => true, cancellationToken);
-            if (filters.Any())
-            {
-                _unitOfWork.Repository<Filter>().RemoveRange(filters);
-            }
-
-            var banners = await _unitOfWork.Repository<Banner>().FindAsync(x => true, cancellationToken);
-            if (banners.Any())
-            {
-                _unitOfWork.Repository<Banner>().RemoveRange(banners);
-            }
-
-            var categories = await _unitOfWork.Repository<Category>().FindAsync(x => true, cancellationToken);
-            if (categories.Any())
-            {
-                _unitOfWork.Repository<Category>().RemoveRange(categories);
-            }
-
-            // Delete ALL users (including admin users)
-            var allUsers = await _unitOfWork.Repository<User>().FindAsync(x => true, cancellationToken);
-            if (allUsers.Any())
-            {
-                _unitOfWork.Repository<User>().RemoveRange(allUsers);
-            }
-
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
         }
         catch (Exception ex)
         {
+            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
             throw new InvalidOperationException($"Failed to clean database: {ex.Message}", ex);
         }
     }
@@ -2191,293 +2155,224 @@ public class ProductService : IProductService
     {
         try
         {
-            // Check if categories already exist
-            var existingCategories = await _unitOfWork.Repository<Category>().FindAsync(c => c.Name.Contains("Ticarət") || c.Name.Contains("Kompüter"), cancellationToken);
+            // Check if beauty categories already exist
+            var existingCategories = await _unitOfWork.Repository<Category>().FindAsync(c => c.Name == "Makiyaj" || c.Name == "Üz Baxım", cancellationToken);
             if (existingCategories.Any())
             {
-                throw new InvalidOperationException("Azerbaijani categories already exist in the database.");
+                throw new InvalidOperationException("Azerbaijani beauty categories already exist in the database.");
             }
 
             var categories = new List<Category>();
             var sortOrder = 1;
 
-            // 1. Ticarət avadanlıqları (Trade Equipment)
-            var ticaretId = Guid.NewGuid();
-            var ticaret = new Category
+            // 1. Makiyaj
+            var makiyajId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                Id = ticaretId,
-                Name = "Ticarət avadanlıqları",
-                Slug = "ticaret-avadanliqlari",
-                Description = "Ticarət üçün lazım olan avadanlıqlar",
+                Id = makiyajId,
+                Name = "Makiyaj",
+                Slug = "makiyaj",
+                Description = "Makiyaj məhsulları",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(ticaret);
+            });
 
-            // Subcategories for Ticarət avadanlıqları
-            var ticaretSubcategories = new[]
+            // Level 2 for Makiyaj
+            var makiyajSubcategories = new[]
             {
-                ("POS Komputerlər", "pos-komputerler", "POS sistemlər üçün komputerlər"),
-                ("Çek priterlər", "cek-printerler", "Çek çap edən priterlər"),
-                ("Barkod printerlər", "barkod-printerler", "Barkod çap edən priterlər"),
-                ("Mini printerlər", "mini-printerler", "Kiçik ölçülü priterlər"),
-                ("Barkod scanerlər", "barkod-scanerler", "Barkod oxuyan cihazlar"),
-                ("Tərəzilər", "tereziler", "Çəki ölçən tərəzilər"),
-                ("Pul yeşikləri", "pul-yesikleri", "Pul saxlama yeşikləri"),
-                ("Çek və Barkod kağızları", "cek-ve-barkod-kagizlari", "Çek və barkod üçün kağızlar")
+                ("Üz", "makiyaj-uz", new[] 
+                { 
+                    ("Tonal Krem", "tonal-krem"), ("Konsiler", "konsiler"), ("Primer (Baza)", "primer-baza"), 
+                    ("Fiksasiya Pudrası", "fiksasiya-pudrasi"), ("Bronzer", "bronzer"), ("Ənlik (Blush)", "enlik-blush"), 
+                    ("Haylayter", "haylayter"), ("Kontur", "kontur"), ("Fiksasiya Spreyi", "fiksasiya-spreyi")
+                }),
+                ("Göz", "makiyaj-goz", new[] 
+                { 
+                    ("Tuş (Maskara)", "tus-maskara"), ("Layner", "layner"), ("Göz Kölgəsi (tək / palet)", "goz-kolgesi-tek-palet"), 
+                    ("Qaş Məhsulları (qələm / gel / pomad)", "qas-mehsullari-qelem-gel-pomad"), ("Kiprik Baxımı / Serumlar", "kiprik-baximi-serumlar"), ("Göz Primeri", "goz-primeri")
+                }),
+                ("Dodaq", "makiyaj-dodaq", new[] 
+                { 
+                    ("Pomada", "pomada"), ("Maye Pomada", "maye-pomada"), ("Dodaq Qələmi", "dodaq-qelemi"), ("Dodaq Parıldadıcısı", "dodaq-parildadicisi")
+                }),
+                ("Makiyaj Alətləri", "makiyaj-aletleri-sub", new[] 
+                { 
+                    ("Fırçalar", "fircalar-makiyaj"), ("Süngərlər / Aplikatorlar", "sungerler-aplikatorlar"), ("Makiyaj Çantaları & Orqanayzerlər", "makiyaj-cantalari-orqanayzerler")
+                }),
+                ("Makiyaj Setləri", "makiyaj-setleri", new[] 
+                { 
+                    ("Üz Setləri", "uz-setleri"), ("Göz Setləri", "goz-setleri"), ("Dodaq Setləri", "dodaq-setleri")
+                })
             };
 
-            foreach (var (name, slug, description) in ticaretSubcategories)
+            foreach (var (name, slug, level3Items) in makiyajSubcategories)
             {
+                var parent2Id = Guid.NewGuid();
                 categories.Add(new Category
                 {
-                    Id = Guid.NewGuid(),
+                    Id = parent2Id,
                     Name = name,
                     Slug = slug,
-                    Description = description,
                     IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == ticaretId) + 1,
-                    ParentCategoryId = ticaretId,
+                    SortOrder = categories.Count(c => c.ParentCategoryId == makiyajId) + 1,
+                    ParentCategoryId = makiyajId,
                     CreatedAt = DateTime.UtcNow
                 });
+
+                foreach (var (l3Name, l3Slug) in level3Items)
+                {
+                    categories.Add(new Category
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = l3Name,
+                        Slug = l3Slug,
+                        IsActive = true,
+                        SortOrder = categories.Count(c => c.ParentCategoryId == parent2Id) + 1,
+                        ParentCategoryId = parent2Id,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
             }
 
-            // 2. Kompüterlər (Computers)
-            var komputerlerId = Guid.NewGuid();
-            var komputerler = new Category
+            // 2. Üz Baxım
+            var uzBaximiId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                Id = komputerlerId,
-                Name = "Kompüterlər",
-                Slug = "komputerler",
-                Description = "Müxtəlif növ kompüterlər",
+                Id = uzBaximiId,
+                Name = "Üz Baxım",
+                Slug = "uz-baxim",
+                Description = "Üz qulluq məhsulları",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(komputerler);
+            });
 
-            // Subcategories for Kompüterlər
-            var komputerlerSubcategories = new[]
+            var uzBaximiSubcategories = new[]
             {
-                ("Ofis Kompüterləri", "ofis-komputerleri", "Ofis işləri üçün kompüterlər"),
-                ("Oyun və Dizayn Kompüterləri", "oyun-ve-dizayn-komputerleri", "Oyun və dizayn üçün güclü kompüterlər"),
-                ("Monoboklar", "monoboklar", "Bir hissədə kompüterlər"),
-                ("Mini Kompüterləri", "mini-komputerleri", "Kiçik ölçülü kompüterlər")
+                ("Təmizləmə", "uz-temizleme", new[] { ("Üz Yuyucular (gel / krem / yağ / balm)", "uz-yuyucular-gel-krem-yag-balm"), ("Miselyar Su", "miselyar-su"), ("Makiyaj Təmizləyiciləri", "makiyaj-temizleyicileri") }),
+                ("Toniklər", "uz-tonikler", new[] { ("Toniklər", "tonikler") }),
+                ("Müalicə", "uz-mualice", new[] { ("Serumlar", "serumlar"), ("Hədəf Müalicələr (akne, ləkə və s.)", "hedef-mualiceler-akne-leke"), ("Retinoid / Retinol", "retinoid-retinol"), ("Vitamin C", "vitamin-c"), ("Eksfoliantlar (AHA / BHA / PHA)", "eksfoliantlar-aha-bha-pha") }),
+                ("Nəmləndirmə", "uz-nemlendirme", new[] { ("Üz Nəmləndiriciləri", "uz-nemlendiricileri"), ("Üz Yağları", "uz-yaglari"), ("Gecə Kremi", "gece-kremi") }),
+                ("Xüsusi Qulluq", "uz-xususi-qulluq", new[] { ("Göz Kremi", "goz-kremi"), ("Dodaq Müalicələri", "dodaq-mualiceleri"), ("Maskalar (sheet / gil / overnight)", "maskalar-sheet-gil-overnight"), ("Pilinqlər", "pilinqler") }),
+                ("Günəş Qorunması", "gunes-qorunmasi", new[] { ("Günəş Kremi (üz üçün)", "gunes-kremi-uz-ucun") })
             };
 
-            foreach (var (name, slug, description) in komputerlerSubcategories)
+            foreach (var (name, slug, level3Items) in uzBaximiSubcategories)
             {
+                var parent2Id = Guid.NewGuid();
                 categories.Add(new Category
                 {
-                    Id = Guid.NewGuid(),
+                    Id = parent2Id,
                     Name = name,
                     Slug = slug,
-                    Description = description,
                     IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == komputerlerId) + 1,
-                    ParentCategoryId = komputerlerId,
+                    SortOrder = categories.Count(c => c.ParentCategoryId == uzBaximiId) + 1,
+                    ParentCategoryId = uzBaximiId,
                     CreatedAt = DateTime.UtcNow
                 });
+
+                foreach (var (l3Name, l3Slug) in level3Items)
+                {
+                    categories.Add(new Category
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = l3Name,
+                        Slug = l3Slug,
+                        IsActive = true,
+                        SortOrder = categories.Count(c => c.ParentCategoryId == parent2Id) + 1,
+                        ParentCategoryId = parent2Id,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
             }
 
-            // 3. Noutbuklar (Laptops)
-            var noutbuklarId = Guid.NewGuid();
-            var noutbuklar = new Category
+            // 3. Ətir
+            var etirId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                Id = noutbuklarId,
-                Name = "Noutbuklar",
-                Slug = "noutbuklar",
-                Description = "Müxtəlif növ noutbuklar",
+                Id = etirId,
+                Name = "Ətir",
+                Slug = "etir",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(noutbuklar);
+            });
 
-            // Subcategories for Noutbuklar
-            var noutbuklarSubcategories = new[]
-            {
-                ("Ofis Noutbukları", "ofis-noutbuklari", "Ofis işləri üçün noutbuklar"),
-                ("Oyun Noutbukları", "oyun-noutbuklari", "Oyun üçün güclü noutbuklar"),
-                ("Planşet tipli", "planset-tipli", "Planşet tipli noutbuklar")
-            };
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Qadın Ətirləri", Slug = "qadin-etirleri", IsActive = true, ParentCategoryId = etirId, CreatedAt = DateTime.UtcNow });
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Kişi Ətirləri", Slug = "kisi-etirleri", IsActive = true, ParentCategoryId = etirId, CreatedAt = DateTime.UtcNow });
 
-            foreach (var (name, slug, description) in noutbuklarSubcategories)
+            // 4. Saç Baxım
+            var sacBaximiId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                categories.Add(new Category
-                {
-                    Id = Guid.NewGuid(),
-                    Name = name,
-                    Slug = slug,
-                    Description = description,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == noutbuklarId) + 1,
-                    ParentCategoryId = noutbuklarId,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            // 4. Müşahidə sistemləri (Surveillance Systems)
-            var musahideId = Guid.NewGuid();
-            var musahide = new Category
-            {
-                Id = musahideId,
-                Name = "Müşahidə sistemləri",
-                Slug = "musahide-sistemleri",
-                Description = "Təhlükəsizlik və müşahidə sistemləri",
+                Id = sacBaximiId,
+                Name = "Saç Baxım",
+                Slug = "sac-baxim",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(musahide);
+            });
 
-            // Subcategories for Müşahidə sistemləri
-            var musahideSubcategories = new[]
-            {
-                ("Analoq Kamera sistemləri", "analoq-kamera-sistemleri", "Analoq kamera sistemləri"),
-                ("İP Kamera sistemləri", "ip-kamera-sistemleri", "İP kamera sistemləri"),
-                ("WIFI Kameraları", "wifi-kameralari", "WIFI kameralar"),
-                ("Yaddaş Qurğuları", "yaddas-qurgulari", "Yaddaş qurğuları"),
-                ("Damafonlar", "damafonlar", "Damafon sistemləri"),
-                ("Access Control", "access-control", "Giriş nəzarət sistemləri")
-            };
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Şampun", Slug = "sampun", IsActive = true, ParentCategoryId = sacBaximiId, CreatedAt = DateTime.UtcNow });
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Kondisioner", Slug = "kondisioner", IsActive = true, ParentCategoryId = sacBaximiId, CreatedAt = DateTime.UtcNow });
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Saç Maskaları", Slug = "sac-maskalari", IsActive = true, ParentCategoryId = sacBaximiId, CreatedAt = DateTime.UtcNow });
 
-            foreach (var (name, slug, description) in musahideSubcategories)
+            // 5. Bədən Baxım
+            var bedenBaximiId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                categories.Add(new Category
-                {
-                    Id = Guid.NewGuid(),
-                    Name = name,
-                    Slug = slug,
-                    Description = description,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == musahideId) + 1,
-                    ParentCategoryId = musahideId,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            // 5. Kompüter avadanlıqları (Computer Equipment)
-            var komputerAvadanliqlariId = Guid.NewGuid();
-            var komputerAvadanliqlari = new Category
-            {
-                Id = komputerAvadanliqlariId,
-                Name = "Kompüter avadanlıqları",
-                Slug = "komputer-avadanliqlari",
-                Description = "Kompüter üçün avadanlıqlar",
+                Id = bedenBaximiId,
+                Name = "Bədən Baxım",
+                Slug = "beden-baxim",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(komputerAvadanliqlari);
+            });
 
-            // Subcategories for Kompüter avadanlıqları
-            var komputerAvadanliqlariSubcategories = new[]
-            {
-                ("Monitor", "monitor", "Kompüter monitorları"),
-                ("SSD", "ssd", "SSD sürücüləri"),
-                ("HDD", "hdd-avadanliq", "Hard disk sürücüləri"),
-                ("RAM", "ram", "RAM yaddaşları"),
-                ("CPU", "cpu", "Prosessorlar"),
-                ("Case", "case", "Kompüter qutuları"),
-                ("Qida Bloku", "qida-bloku", "Qida blokları"),
-                ("Qulaqlıq", "qulaqliq", "Qulaqlıqlar"),
-                ("Klavyatura", "klavyatura", "Klavyaturalar"),
-                ("Maus", "maus", "Mauslar"),
-                ("Dinamik", "dinamik", "Dinamiklər")
+            var bedenSub = new[] 
+            { 
+                ("Duş Geli / Bədən Yuyucu", "dus-geli"), ("Bədən Skrabı", "beden-skrabi"), 
+                ("Bədən Losyonu & Kremi", "beden-losyonu-kremi"), ("Bədən Yağları", "beden-yaglari"), 
+                ("Əl Qulluğu", "el-qullugu"), ("Ayaq Qulluğu", "ayaq-qullugu"), 
+                ("Dezodorantlar", "dezodorantlar"), ("Bədən Ətirləri", "beden-etirleri") 
             };
 
-            foreach (var (name, slug, description) in komputerAvadanliqlariSubcategories)
+            foreach (var (name, slug) in bedenSub)
             {
-                categories.Add(new Category
-                {
-                    Id = Guid.NewGuid(),
-                    Name = name,
-                    Slug = slug,
-                    Description = description,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == komputerAvadanliqlariId) + 1,
-                    ParentCategoryId = komputerAvadanliqlariId,
-                    CreatedAt = DateTime.UtcNow
-                });
+                categories.Add(new Category { Id = Guid.NewGuid(), Name = name, Slug = slug, IsActive = true, ParentCategoryId = bedenBaximiId, CreatedAt = DateTime.UtcNow });
             }
 
-            // 6. Ofis avadanlıqları (Office Equipment)
-            var ofisAvadanliqlariId = Guid.NewGuid();
-            var ofisAvadanliqlari = new Category
+            // 6. Makiyaj Alətləri (Top level)
+            var aletlerId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                Id = ofisAvadanliqlariId,
-                Name = "Ofis avadanlıqları",
-                Slug = "ofis-avadanliqlari",
-                Description = "Ofis üçün avadanlıqlar",
+                Id = aletlerId,
+                Name = "Makiyaj Alətləri",
+                Slug = "makiyaj-aletleri",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(ofisAvadanliqlari);
+            });
 
-            // Subcategories for Ofis avadanlıqları
-            var ofisAvadanliqlariSubcategories = new[]
-            {
-                ("UPS", "ups", "UPS sistemləri"),
-                ("Printer", "printer", "Priterlər"),
-                ("Uzadıcı", "uzadici", "Uzadıcılar")
-            };
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Fırçalar", Slug = "fircalar", IsActive = true, ParentCategoryId = aletlerId, CreatedAt = DateTime.UtcNow });
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Süngərlər", Slug = "sungerler", IsActive = true, ParentCategoryId = aletlerId, CreatedAt = DateTime.UtcNow });
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Güzgülər", Slug = "guzguler", IsActive = true, ParentCategoryId = aletlerId, CreatedAt = DateTime.UtcNow });
 
-            foreach (var (name, slug, description) in ofisAvadanliqlariSubcategories)
+            // 7. Setlər & Hədiyyələr
+            var setlerId = Guid.NewGuid();
+            categories.Add(new Category
             {
-                categories.Add(new Category
-                {
-                    Id = Guid.NewGuid(),
-                    Name = name,
-                    Slug = slug,
-                    Description = description,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == ofisAvadanliqlariId) + 1,
-                    ParentCategoryId = ofisAvadanliqlariId,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            // 7. Şəbəkə avadanlıqları (Network Equipment)
-            var sebekeAvadanliqlariId = Guid.NewGuid();
-            var sebekeAvadanliqlari = new Category
-            {
-                Id = sebekeAvadanliqlariId,
-                Name = "Şəbəkə avadanlıqları",
-                Slug = "sebeke-avadanliqlari",
-                Description = "Şəbəkə üçün avadanlıqlar",
+                Id = setlerId,
+                Name = "Setlər & Hədiyyələr",
+                Slug = "setler-ve-hediyyeler",
                 IsActive = true,
                 SortOrder = sortOrder++,
                 CreatedAt = DateTime.UtcNow
-            };
-            categories.Add(sebekeAvadanliqlari);
+            });
 
-            // Subcategories for Şəbəkə avadanlıqları
-            var sebekeAvadanliqlariSubcategories = new[]
-            {
-                ("Router", "router", "Routerlər"),
-                ("Access point", "access-point", "Access pointlər"),
-                ("Range extender", "range-extender", "Range extenderlər"),
-                ("Switch", "switch", "Switchlər"),
-                ("Wifi adapter", "wifi-adapter", "Wifi adapterlər")
-            };
-
-            foreach (var (name, slug, description) in sebekeAvadanliqlariSubcategories)
-            {
-                categories.Add(new Category
-                {
-                    Id = Guid.NewGuid(),
-                    Name = name,
-                    Slug = slug,
-                    Description = description,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == sebekeAvadanliqlariId) + 1,
-                    ParentCategoryId = sebekeAvadanliqlariId,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Hədiyyə Setləri", Slug = "hediyye-setleri", IsActive = true, ParentCategoryId = setlerId, CreatedAt = DateTime.UtcNow });
+            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Advent Kalendarları", Slug = "advent-kalendarlari", IsActive = true, ParentCategoryId = setlerId, CreatedAt = DateTime.UtcNow });
 
             // Add all categories to database
             await _unitOfWork.Repository<Category>().AddRangeAsync(categories);
@@ -2488,6 +2383,7 @@ public class ProductService : IProductService
             throw new InvalidOperationException($"Failed to add Azerbaijani categories: {ex.Message}", ex);
         }
     }
+
 
     private async Task PopulateCategoryBreadcrumbs(IEnumerable<ProductListDto> products, CancellationToken cancellationToken)
     {
@@ -2624,10 +2520,16 @@ public class ProductService : IProductService
         // Apply filters
         var filteredProducts = products.Where(p => p.IsActive);
         
-        if (request.CategoryId.HasValue)
+        if (request.CategoryIds != null && request.CategoryIds.Any())
         {
-            var categoryIds = await GetCategoryIdsIncludingSubcategories(request.CategoryId.Value, cancellationToken);
-            filteredProducts = filteredProducts.Where(p => categoryIds.Contains(p.CategoryId));
+            var aggregatedCategoryIds = new List<Guid>();
+            foreach (var catId in request.CategoryIds)
+            {
+                var categoryIds = await GetCategoryIdsIncludingSubcategories(catId, cancellationToken);
+                aggregatedCategoryIds.AddRange(categoryIds);
+            }
+            aggregatedCategoryIds = aggregatedCategoryIds.Distinct().ToList();
+            filteredProducts = filteredProducts.Where(p => aggregatedCategoryIds.Contains(p.CategoryId));
         }
         
         if (!string.IsNullOrWhiteSpace(request.BrandSlug))
@@ -2790,11 +2692,16 @@ public class ProductService : IProductService
         var products = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Brand);
         var filteredProducts = products.Where(p => p.BrandId == brand.Id && p.IsActive);
         
-        // Apply additional filters
-        if (request.CategoryId.HasValue)
+        if (request.CategoryIds != null && request.CategoryIds.Any())
         {
-            var categoryIds = await GetCategoryIdsIncludingSubcategories(request.CategoryId.Value, cancellationToken);
-            filteredProducts = filteredProducts.Where(p => categoryIds.Contains(p.CategoryId));
+            var aggregatedCategoryIds = new List<Guid>();
+            foreach (var catId in request.CategoryIds)
+            {
+                var categoryIds = await GetCategoryIdsIncludingSubcategories(catId, cancellationToken);
+                aggregatedCategoryIds.AddRange(categoryIds);
+            }
+            aggregatedCategoryIds = aggregatedCategoryIds.Distinct().ToList();
+            filteredProducts = filteredProducts.Where(p => aggregatedCategoryIds.Contains(p.CategoryId));
         }
         
         if (request.IsHotDeal.HasValue)
@@ -2858,10 +2765,16 @@ public class ProductService : IProductService
             }
         }
         
-        if (request.CategoryId.HasValue)
+        if (request.CategoryIds != null && request.CategoryIds.Any())
         {
-            var categoryIds = await GetCategoryIdsIncludingSubcategories(request.CategoryId.Value, cancellationToken);
-            filteredProducts = filteredProducts.Where(p => categoryIds.Contains(p.CategoryId));
+            var aggregatedCategoryIds = new List<Guid>();
+            foreach (var catId in request.CategoryIds)
+            {
+                var categoryIds = await GetCategoryIdsIncludingSubcategories(catId, cancellationToken);
+                aggregatedCategoryIds.AddRange(categoryIds);
+            }
+            aggregatedCategoryIds = aggregatedCategoryIds.Distinct().ToList();
+            filteredProducts = filteredProducts.Where(p => aggregatedCategoryIds.Contains(p.CategoryId));
         }
         
         filteredProducts = ApplySorting(filteredProducts.AsQueryable(), request.ProductSortBy, request.SortOrder);
@@ -2902,10 +2815,16 @@ public class ProductService : IProductService
         var filteredProducts = products.Where(p => p.IsActive && p.Name.ToLower().Contains(searchTerm));
         
         // Apply additional filters
-        if (request.CategoryId.HasValue)
+        if (request.CategoryIds != null && request.CategoryIds.Any())
         {
-            var categoryIds = await GetCategoryIdsIncludingSubcategories(request.CategoryId.Value, cancellationToken);
-            filteredProducts = filteredProducts.Where(p => categoryIds.Contains(p.CategoryId));
+            var aggregatedCategoryIds = new List<Guid>();
+            foreach (var catId in request.CategoryIds)
+            {
+                var categoryIds = await GetCategoryIdsIncludingSubcategories(catId, cancellationToken);
+                aggregatedCategoryIds.AddRange(categoryIds);
+            }
+            aggregatedCategoryIds = aggregatedCategoryIds.Distinct().ToList();
+            filteredProducts = filteredProducts.Where(p => aggregatedCategoryIds.Contains(p.CategoryId));
         }
         
         if (!string.IsNullOrWhiteSpace(request.BrandSlug))
@@ -2952,14 +2871,20 @@ public class ProductService : IProductService
     public async Task<PagedResultDto<ProductListDto>> GetRecommendedProductsPaginatedAsync(RecommendedProductsPaginationRequestDto request, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
         // When categoryId is provided, get products directly from that category for proper pagination
-        if (request.CategoryId.HasValue)
+        if (request.CategoryIds != null && request.CategoryIds.Any())
         {
-            var categoryIds = await GetCategoryIdsIncludingSubcategories(request.CategoryId.Value, cancellationToken);
+            var aggregatedCategoryIds = new List<Guid>();
+            foreach (var catId in request.CategoryIds)
+            {
+                var categoryIds = await GetCategoryIdsIncludingSubcategories(catId, cancellationToken);
+                aggregatedCategoryIds.AddRange(categoryIds);
+            }
+            aggregatedCategoryIds = aggregatedCategoryIds.Distinct().ToList();
             
             // Get all active products from the category with includes
             var allProducts = await _unitOfWork.Repository<Product>().GetAllWithIncludesAsync(p => p.Category, p => p.Images);
             var categoryProducts = allProducts
-                .Where(p => p.IsActive && categoryIds.Contains(p.CategoryId))
+                .Where(p => p.IsActive && aggregatedCategoryIds.Contains(p.CategoryId))
                 .ToList();
             
             // Apply brand filter if specified
@@ -3180,6 +3105,12 @@ public class ProductService : IProductService
 
             var rows = worksheet.RowsUsed().Skip(1); // Skip header row
             
+            // Cache to avoid duplicate creations in the same batch
+            var categoriesCache = new Dictionary<string, Category>(StringComparer.OrdinalIgnoreCase);
+            var brandsCache = new Dictionary<string, Brand>(StringComparer.OrdinalIgnoreCase);
+            var skusCache = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var slugsCache = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
             foreach (var row in rows)
             {
                 try
@@ -3200,7 +3131,12 @@ public class ProductService : IProductService
                     if (!decimal.TryParse(row.Cell(3).GetValue<string>(), out decimal price))
                     {
                         result.FailureCount++;
-                        result.Errors.Add($"Row {row.RowNumber()}: Invalid price format");
+                        result.RowErrors.Add(new ProductImportErrorDto
+                        {
+                            RowNumber = row.RowNumber(),
+                            ProductName = name,
+                            Error = "Invalid price format. Expected a numeric value."
+                        });
                         continue;
                     }
 
@@ -3222,97 +3158,176 @@ public class ProductService : IProductService
                     if (string.IsNullOrWhiteSpace(categoryName))
                     {
                         result.FailureCount++;
-                        result.Errors.Add($"Row {row.RowNumber()}: Category is required");
+                        result.RowErrors.Add(new ProductImportErrorDto
+                        {
+                            RowNumber = row.RowNumber(),
+                            ProductName = name,
+                            Error = "Category is required but was missing in the Excel file."
+                        });
                         continue;
                     }
 
                     var brandName = row.Cell(8).GetValue<string>();
                     
-                    // 3. Find or create Category
-                    var category = await _unitOfWork.Repository<Category>()
-                        .FirstOrDefaultAsync(c => c.Name == categoryName, cancellationToken);
-                    
-                    if (category == null)
+                    // 3. Find Category (Strict matching - No creation)
+                    Category? category = null;
+                    if (categoriesCache.TryGetValue(categoryName, out var cachedCategory))
                     {
-                        category = new Category
+                        category = cachedCategory;
+                    }
+                    else
+                    {
+                        // Normalize name and handle hierarchy indicators
+                        var rawName = categoryName.Trim();
+                        string normalizedCategoryName;
+                        
+                        // Handle "A -> B -> C" or "A > B > C" structures
+                        if (rawName.Contains("->"))
                         {
-                            Id = Guid.NewGuid(),
-                            Name = categoryName,
-                            Slug = categoryName.ToLowerInvariant().Replace(" ", "-"),
-                            SortOrder = 0,
-                            IsActive = true,
-                            CreatedAt = DateTime.UtcNow
-                        };
-                        await _unitOfWork.Repository<Category>().AddAsync(category, cancellationToken);
+                            normalizedCategoryName = rawName.Split("->").Last().Trim();
+                        }
+                        else if (rawName.Contains(">"))
+                        {
+                            normalizedCategoryName = rawName.Split(">").Last().Trim();
+                        }
+                        else
+                        {
+                            normalizedCategoryName = rawName;
+                        }
+
+                        var slugToMatch = normalizedCategoryName.ToLowerInvariant().Replace(" ", "-");
+                        
+                        // Check if the category already exists by Name or Slug
+                        category = await _unitOfWork.Repository<Category>()
+                            .FirstOrDefaultAsync(c => c.Name == normalizedCategoryName || c.Slug == slugToMatch, cancellationToken);
+                        
+                        if (category == null)
+                        {
+                            result.FailureCount++;
+                            result.RowErrors.Add(new ProductImportErrorDto
+                            {
+                                RowNumber = row.RowNumber(),
+                                ProductName = name,
+                                Error = $"Category '{categoryName}' not found in the system. Categories cannot be created during import."
+                            });
+                            continue;
+                        }
+                        categoriesCache[categoryName] = category;
                     }
 
                     // 4. Find or create Brand (if provided)
                     Brand? brand = null;
                     if (!string.IsNullOrWhiteSpace(brandName))
                     {
-                        brand = await _unitOfWork.Repository<Brand>()
-                            .FirstOrDefaultAsync(b => b.Name == brandName, cancellationToken);
-                        
-                        if (brand == null)
+                        if (brandsCache.TryGetValue(brandName, out var cachedBrand))
                         {
-                            brand = new Brand
+                            brand = cachedBrand;
+                        }
+                        else
+                        {
+                            var normalizedBrandName = brandName.Trim();
+                            var slugToMatch = normalizedBrandName.ToLowerInvariant().Replace(" ", "-");
+
+                            brand = await _unitOfWork.Repository<Brand>()
+                                .FirstOrDefaultAsync(b => b.Name == normalizedBrandName || b.Slug == slugToMatch, cancellationToken);
+                            
+                            if (brand == null)
                             {
-                                Id = Guid.NewGuid(),
-                                Name = brandName,
-                                Slug = brandName.ToLowerInvariant().Replace(" ", "-"),
-                                IsActive = true,
-                                CreatedAt = DateTime.UtcNow
-                            };
-                            await _unitOfWork.Repository<Brand>().AddAsync(brand, cancellationToken);
+                                brand = new Brand
+                                {
+                                    Id = Guid.NewGuid(),
+                                    Name = normalizedBrandName,
+                                    Slug = slugToMatch,
+                                    IsActive = true,
+                                    CreatedAt = DateTime.UtcNow
+                                };
+                                await _unitOfWork.Repository<Brand>().AddAsync(brand, cancellationToken);
+                            }
+                            brandsCache[brandName] = brand;
                         }
                     }
 
-                    // 5. Create Product
-                    var product = new Product
+                    // 5. Create or Update Product
+                    Product? product = null;
+                    if (!string.IsNullOrWhiteSpace(sku))
                     {
-                        Id = Guid.NewGuid(),
-                        Name = name,
-                        Slug = GenerateSlugHelper(name),
-                        Description = description,
-                        Price = price,
-                        DiscountedPrice = discountPrice,
-                        StockQuantity = stockQuantity,
-                        Sku = sku,
-                        Category = category, // Use navigation property
-                        Brand = brand,       // Use navigation property
-                        IsActive = true,
-                        CreatedAt = DateTime.UtcNow,
-                        ImageUrl = "/images/placeholder.png" // Default placeholder
-                    };
+                        product = await _unitOfWork.Repository<Product>()
+                            .FirstOrDefaultAsync(p => p.Sku == sku, cancellationToken);
+                    }
 
-                    // Add default primary image
-                    var defaultImage = new ProductImage
+                    bool isNew = false;
+                    if (product == null)
                     {
-                        Id = Guid.NewGuid(),
-                        ProductId = product.Id,
-                        ImageUrl = "/images/placeholder.png",
-                        IsPrimary = true,
-                        SortOrder = 0,
-                        CreatedAt = DateTime.UtcNow
-                    };
-                    
-                    product.Images = new List<ProductImage> { defaultImage };
+                        isNew = true;
+                        product = new Product { Id = Guid.NewGuid(), CreatedAt = DateTime.UtcNow };
+                        
+                        // Generate unique slug
+                        var baseSlug = GenerateSlugHelper(name);
+                        var uniqueSlug = baseSlug;
+                        int suffix = 1;
 
-                    await _unitOfWork.Repository<Product>().AddAsync(product, cancellationToken);
-                    
-                    result.SuccessCount++;
-                    result.CreatedProducts.Add(new ProductImportDetailDto
+                        // Check uniqueness in database and current batch
+                        while (slugsCache.Contains(uniqueSlug) || 
+                               await _unitOfWork.Repository<Product>().AnyAsync(p => p.Slug == uniqueSlug, cancellationToken))
+                        {
+                            uniqueSlug = $"{baseSlug}-{suffix++}";
+                        }
+                        
+                        product.Slug = uniqueSlug;
+                        slugsCache.Add(uniqueSlug);
+                    }
+
+                    product.Name = name;
+                    product.Description = description;
+                    product.Price = price;
+                    product.DiscountedPrice = discountPrice;
+                    product.StockQuantity = stockQuantity;
+                    product.Sku = sku;
+                    product.Category = category;
+                    product.Brand = brand;
+                    product.IsActive = true;
+                    product.UpdatedAt = DateTime.UtcNow;
+                    product.ImageUrl = product.ImageUrl ?? "/images/placeholder.png";
+
+                    if (isNew)
                     {
-                        Name = product.Name,
-                        Id = product.Id,
-                        IsActive = product.IsActive
-                    });
+                        // Add default primary image for new products
+                        var defaultImage = new ProductImage
+                        {
+                            Id = Guid.NewGuid(),
+                            ProductId = product.Id,
+                            ImageUrl = "/images/placeholder.png",
+                            IsPrimary = true,
+                            SortOrder = 0,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        product.Images = new List<ProductImage> { defaultImage };
+                        await _unitOfWork.Repository<Product>().AddAsync(product, cancellationToken);
+                        result.SuccessCount++;
+                        result.CreatedProducts.Add(new ProductImportDetailDto
+                        {
+                            Name = product.Name,
+                            Id = product.Id,
+                            IsActive = product.IsActive
+                        });
+                    }
+                    else
+                    {
+                        _unitOfWork.Repository<Product>().Update(product);
+                        result.SuccessCount++; // Count updates as success too
+                    }
                     Console.WriteLine($"[IMPORT] Scheduled Product for Save: {product.Name} (ID: {product.Id}) IsActive: {product.IsActive}");
                 }
                 catch (Exception ex)
                 {
                     result.FailureCount++;
-                    result.Errors.Add($"Row {row.RowNumber()}: Error processing - {ex.Message}");
+                    var productName = row.Cell(1).GetValue<string>();
+                    result.RowErrors.Add(new ProductImportErrorDto
+                    {
+                        RowNumber = row.RowNumber(),
+                        ProductName = string.IsNullOrWhiteSpace(productName) ? "Unknown" : productName,
+                        Error = $"Unexpected error: {ex.Message}"
+                    });
                 }
             }
             

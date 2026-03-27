@@ -118,6 +118,79 @@ public class CartService : ICartService
         return await MapCartToDto(cart, cancellationToken);
     }
 
+    public async Task<CartDto> BulkAddToCartAsync(Guid? userId, BulkAddToCartDto bulkAddToCartDto, CancellationToken cancellationToken = default)
+    {
+        if (bulkAddToCartDto == null || !bulkAddToCartDto.Items.Any())
+        {
+            throw new ArgumentException("Items are required for bulk add.");
+        }
+
+        var cart = await GetOrCreateCartAsync(userId, cancellationToken);
+
+        foreach (var item in bulkAddToCartDto.Items)
+        {
+            // Validate product exists and is active
+            var product = await _unitOfWork.Repository<Product>().GetByIdAsync(item.ProductId, cancellationToken);
+            if (product == null || !product.IsActive)
+            {
+                throw new ArgumentException($"Product with ID {item.ProductId} not found or inactive.");
+            }
+
+            // Check stock availability
+            if (product.StockQuantity < item.Quantity)
+            {
+                throw new InvalidOperationException($"Insufficient stock for product {product.Name}. Available: {product.StockQuantity}");
+            }
+
+            // Use discounted price if available AND greater than 0, otherwise regular price
+            decimal unitPrice = (product.DiscountedPrice.HasValue && product.DiscountedPrice.Value > 0)
+                ? product.DiscountedPrice.Value
+                : product.Price;
+
+            if (unitPrice <= 0)
+            {
+                throw new InvalidOperationException($"Product {product.Name} price is invalid.");
+            }
+
+            // Check if item already exists in cart
+            var existingItem = await _unitOfWork.Repository<CartItem>()
+                .FirstOrDefaultAsync(ci => ci.CartId == cart.Id && ci.ProductId == item.ProductId, cancellationToken);
+
+            if (existingItem != null)
+            {
+                var newQuantity = existingItem.Quantity + item.Quantity;
+                if (product.StockQuantity < newQuantity)
+                {
+                    throw new InvalidOperationException($"Insufficient stock for product {product.Name}. Available: {product.StockQuantity}, In cart: {existingItem.Quantity}");
+                }
+
+                existingItem.Quantity = newQuantity;
+                existingItem.UnitPrice = unitPrice;
+                existingItem.UpdatedAt = DateTime.UtcNow;
+                _unitOfWork.Repository<CartItem>().Update(existingItem);
+            }
+            else
+            {
+                var cartItem = new CartItem
+                {
+                    Id = Guid.NewGuid(),
+                    CartId = cart.Id,
+                    ProductId = item.ProductId,
+                    Quantity = item.Quantity,
+                    UnitPrice = unitPrice,
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _unitOfWork.Repository<CartItem>().AddAsync(cartItem, cancellationToken);
+            }
+        }
+
+        cart.UpdatedAt = DateTime.UtcNow;
+        _unitOfWork.Repository<Cart>().Update(cart);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return await MapCartToDto(cart, cancellationToken);
+    }
+
     public async Task<CartDto> UpdateCartItemAsync(Guid? userId, Guid cartItemId, UpdateCartItemDto updateCartItemDto, CancellationToken cancellationToken = default)
     {
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);

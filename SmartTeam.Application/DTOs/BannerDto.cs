@@ -25,6 +25,29 @@ public class BannerDto
     public bool IsCurrentlyActive => IsActive && 
         (StartDate == null || StartDate <= DateTime.UtcNow) && 
         (EndDate == null || EndDate >= DateTime.UtcNow);
+
+    // --- NEW: Title positioning & style ---
+    public int TitlePositionX { get; set; } = 50;
+    public int TitlePositionY { get; set; } = 20;
+    public int TitleFontSize { get; set; } = 32;
+    public string TitleColor { get; set; } = "#ffffff";
+    public string TitleAlign { get; set; } = "center";
+
+    // --- NEW: Description positioning & style ---
+    public int DescriptionPositionX { get; set; } = 50;
+    public int DescriptionPositionY { get; set; } = 40;
+    public int DescriptionFontSize { get; set; } = 16;
+    public string DescriptionColor { get; set; } = "#eeeeee";
+
+    // --- NEW: Button positioning & style ---
+    public int ButtonPositionX { get; set; } = 50;
+    public int ButtonPositionY { get; set; } = 65;
+    public string ButtonColor { get; set; } = "#ffffff";
+    public string ButtonTextColor { get; set; } = "#000000";
+    public int ButtonBorderRadius { get; set; } = 8;
+    public int ButtonPaddingX { get; set; } = 24;
+    public int ButtonPaddingY { get; set; } = 10;
+    public int ButtonFontSize { get; set; } = 14;
 }
 
 public class CreateBannerDto
@@ -41,6 +64,29 @@ public class CreateBannerDto
     public int SortOrder { get; set; } = 0;
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
+
+    // --- NEW: Title positioning & style ---
+    public int TitlePositionX { get; set; } = 50;
+    public int TitlePositionY { get; set; } = 20;
+    public int TitleFontSize { get; set; } = 32;
+    public string TitleColor { get; set; } = "#ffffff";
+    public string TitleAlign { get; set; } = "center";
+
+    // --- NEW: Description positioning & style ---
+    public int DescriptionPositionX { get; set; } = 50;
+    public int DescriptionPositionY { get; set; } = 40;
+    public int DescriptionFontSize { get; set; } = 16;
+    public string DescriptionColor { get; set; } = "#eeeeee";
+
+    // --- NEW: Button positioning & style ---
+    public int ButtonPositionX { get; set; } = 50;
+    public int ButtonPositionY { get; set; } = 65;
+    public string ButtonColor { get; set; } = "#ffffff";
+    public string ButtonTextColor { get; set; } = "#000000";
+    public int ButtonBorderRadius { get; set; } = 8;
+    public int ButtonPaddingX { get; set; } = 24;
+    public int ButtonPaddingY { get; set; } = 10;
+    public int ButtonFontSize { get; set; } = 14;
 }
 
 public class CreateBannerWithImageDto
@@ -57,6 +103,29 @@ public class CreateBannerWithImageDto
     public int SortOrder { get; set; } = 0;
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
+
+    // --- NEW: Title positioning & style ---
+    public int TitlePositionX { get; set; } = 50;
+    public int TitlePositionY { get; set; } = 20;
+    public int TitleFontSize { get; set; } = 32;
+    public string TitleColor { get; set; } = "#ffffff";
+    public string TitleAlign { get; set; } = "center";
+
+    // --- NEW: Description positioning & style ---
+    public int DescriptionPositionX { get; set; } = 50;
+    public int DescriptionPositionY { get; set; } = 40;
+    public int DescriptionFontSize { get; set; } = 16;
+    public string DescriptionColor { get; set; } = "#eeeeee";
+
+    // --- NEW: Button positioning & style ---
+    public int ButtonPositionX { get; set; } = 50;
+    public int ButtonPositionY { get; set; } = 65;
+    public string ButtonColor { get; set; } = "#ffffff";
+    public string ButtonTextColor { get; set; } = "#000000";
+    public int ButtonBorderRadius { get; set; } = 8;
+    public int ButtonPaddingX { get; set; } = 24;
+    public int ButtonPaddingY { get; set; } = 10;
+    public int ButtonFontSize { get; set; } = 14;
 }
 
 public class UpdateBannerDto
@@ -73,6 +142,29 @@ public class UpdateBannerDto
     public int SortOrder { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
+
+    // --- NEW: Title positioning & style ---
+    public int TitlePositionX { get; set; }
+    public int TitlePositionY { get; set; }
+    public int TitleFontSize { get; set; }
+    public string TitleColor { get; set; } = string.Empty;
+    public string TitleAlign { get; set; } = string.Empty;
+
+    // --- NEW: Description positioning & style ---
+    public int DescriptionPositionX { get; set; }
+    public int DescriptionPositionY { get; set; }
+    public int DescriptionFontSize { get; set; }
+    public string DescriptionColor { get; set; } = string.Empty;
+
+    // --- NEW: Button positioning & style ---
+    public int ButtonPositionX { get; set; }
+    public int ButtonPositionY { get; set; }
+    public string ButtonColor { get; set; } = string.Empty;
+    public string ButtonTextColor { get; set; } = string.Empty;
+    public int ButtonBorderRadius { get; set; }
+    public int ButtonPaddingX { get; set; }
+    public int ButtonPaddingY { get; set; }
+    public int ButtonFontSize { get; set; }
 }
 
 public class BannerSearchDto

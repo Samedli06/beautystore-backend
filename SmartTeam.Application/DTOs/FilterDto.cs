@@ -136,7 +136,7 @@ public class FilterTypeDto
 
 public class ProductFilterCriteriaDto
 {
-    public Guid? CategoryId { get; set; }
+    public List<Guid>? CategoryIds { get; set; }
     public string? BrandSlug { get; set; }
     public bool? IsHotDeal { get; set; }
     public bool? IsRecommended { get; set; }

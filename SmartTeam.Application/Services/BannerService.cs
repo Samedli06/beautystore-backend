@@ -353,6 +353,7 @@ public class BannerService : IBannerService
                 BannerType.Top => "Additional banner displayed at the top of the page, below header",
                 BannerType.Middle => "Banner displayed between content sections",
                 BannerType.Bottom => "Banner displayed near the footer",
+                BannerType.Popup => "Promotional popup or modal banner",
                 _ => type.ToString()
             }
         });

@@ -438,7 +438,8 @@ public class ProductsController : ControllerBase
             }
 
             var userRole = GetCurrentUserRole();
-            var result = await _productService.GetFilteredProductsAsync(criteria, userRole, cancellationToken);
+            var userId = GetCurrentUserId();
+            var result = await _productService.GetFilteredProductsAsync(criteria, userRole, userId, cancellationToken);
             return Ok(result);
         }
         catch (ArgumentException ex)
@@ -613,6 +614,7 @@ public class ProductsController : ControllerBase
     public async Task<ActionResult<ProductDto>> CreateProductWithImage(
         [FromForm] string? productData, // JSON string containing product information
         IFormFile? imageFile,
+        IFormFileCollection? detailImageFiles,
         CancellationToken cancellationToken)
     {
         try
@@ -647,7 +649,7 @@ public class ProductsController : ControllerBase
                 return BadRequest("Failed to parse product data");
             }
 
-            var product = await _productService.CreateProductWithImageAsync(createProductDto, imageFile, cancellationToken);
+            var product = await _productService.CreateProductWithImageAsync(createProductDto, imageFile, detailImageFiles, cancellationToken);
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
         }
         catch (ArgumentException ex)

@@ -12,11 +12,13 @@ namespace SmartTeam.Controllers;
 public class OrderController : ControllerBase
 {
     private readonly IOrderService _orderService;
+    private readonly IPdfService _pdfService;
     private readonly ILogger<OrderController> _logger;
 
-    public OrderController(IOrderService orderService, ILogger<OrderController> logger)
+    public OrderController(IOrderService orderService, IPdfService pdfService, ILogger<OrderController> logger)
     {
         _orderService = orderService;
+        _pdfService = pdfService;
         _logger = logger;
     }
 
@@ -184,6 +186,35 @@ public class OrderController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error updating order status for {OrderId}", id);
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Download order receipt as PDF
+    /// </summary>
+    [HttpGet("{id}/pdf")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadOrderPdf(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var order = await _orderService.GetOrderByIdAsync(id, cancellationToken);
+            if (order == null)
+            {
+                return NotFound(new { error = "Order not found" });
+            }
+
+            var pdfBytes = await _pdfService.GenerateOrderReceiptAsync(order, cancellationToken);
+            var fileName = $"qaimə-{order.OrderNumber}.pdf";
+
+            return File(pdfBytes, "application/pdf", fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating PDF for order {OrderId}", id);
             return BadRequest(new { error = ex.Message });
         }
     }

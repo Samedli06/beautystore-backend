@@ -205,9 +205,21 @@ public class BrandService : IBrandService
             // Predefined brands list
             var brandNames = new[]
             {
-                "HEM", "HP", "Dell", "Xprinter", "Lenovo", "Acer", "Hikvision", 
-                "Unv", "Canon", "LG", "WD", "SEAGATE", "Sunlux", "Datalogic"
+                "ALERANA", "Anastasia Beverly Hills", "Armani Beauty", "Bare Minerals", "BATH & BODY", "BATISTE", 
+                "Beauty Blender", "Beauty of Joseon", "Beili", "BENEFIT", "BIO-OIL", "BIODERMA", "Bobbi Brown", 
+                "BURBERRY", "CAUDALIE", "CHARLOTTE TILBURY", "Clinique", "COSRX", "DERMEDIC", "DIOR", 
+                "DOLCE & GABBANA", "DRY IDEA", "EMBRYOLISSE", "ENOUGH", "ESSENCE", "ESSENTIALS", "Estée Lauder", 
+                "FENTY BEAUTY", "GA-DE", "GUCCI", "GUERLAIN", "GUESS", "Haus Labs", "HEIMISH", "HUDA BEAUTY", 
+                "ISADORA", "JO MALONE", "JOJOBA", "JOWE", "KENZO", "Kiehl's", "KIKO", "KM SOLUTION", "KRYOLAN", 
+                "L'Oréal Paris", "LADOR", "Lancôme", "LOSANGELES", "LUXVISAGE", "MAC", "Macy's", "Make Up For Ever", 
+                "MANYO", "MARC JACOBS", "MAYBELLINE", "MEDI-PEEL", "Michael Kors", "MISS TAIS", "MIZON", "MORPHE", 
+                "NARS", "OFRA", "ORIGINS", "Peter Thomas Roth", "PETITE MAISON", "Physicians Formula", "RARE BEAUTY", 
+                "Real Techniques", "RELOUIS", "REVOLUTION", "SCANDAL", "SEPHORA", "SINOZ", "SMASHBOX", 
+                "Sol de Janeiro", "Tarte", "TECNIC", "THE INKEY LIST", "THE ORDINARY", "THE PUREST", "theBalm", 
+                "TIMELESS", "TOM FORD", "TONY MOLY", "TOO FACED", "TOPFACE", "TRESAN", "TRICUP", "URBAN DECAY", 
+                "VALENTINO PUFFER", "Victoria's Secret", "Wet n Wild", "WISHFUL", "Yves Saint Laurent"
             };
+
 
             // Get all existing brands for duplicate checking and sort order calculation
             var allBrands = await _unitOfWork.Repository<Brand>().GetAllAsync(cancellationToken);
@@ -455,5 +467,30 @@ public class BrandService : IBrandService
             HasNextPage = page < totalPages,
             HasPreviousPage = page > 1
         };
+    }
+    public async Task<IEnumerable<BrandDto>> SearchBrandsAsync(string searchTerm, CancellationToken cancellationToken = default)
+    {
+        var brands = await _unitOfWork.Repository<Brand>().GetAllAsync(cancellationToken);
+        var filteredBrands = brands.Where(b => b.IsActive);
+        
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var search = searchTerm.ToLower();
+            filteredBrands = filteredBrands.Where(b => b.Name.ToLower().Contains(search));
+        }
+        
+        var sortedBrands = filteredBrands.OrderBy(b => b.SortOrder).ToList();
+        var brandDtos = _mapper.Map<IEnumerable<BrandDto>>(sortedBrands);
+        
+        // Calculate product counts
+        var products = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
+        var activeProducts = products.Where(p => p.IsActive);
+        
+        foreach (var brandDto in brandDtos)
+        {
+            brandDto.ProductCount = activeProducts.Count(p => p.BrandId == brandDto.Id);
+        }
+        
+        return brandDtos;
     }
 }

@@ -23,8 +23,9 @@ public class AdminController : ControllerBase
     private readonly IProductPdfService _productPdfService;
     private readonly IBrandService _brandService;
     private readonly IEmailService _emailService;
+    private readonly IQuizService _quizService;
 
-    public AdminController(IUserService userService, IAuthService authService, IProductService productService, IFilterService filterService, IBannerService bannerService, IDownloadableFileService downloadableFileService, IProductPdfService productPdfService, IBrandService brandService, IEmailService emailService)
+    public AdminController(IUserService userService, IAuthService authService, IProductService productService, IFilterService filterService, IBannerService bannerService, IDownloadableFileService downloadableFileService, IProductPdfService productPdfService, IBrandService brandService, IEmailService emailService, IQuizService quizService)
     {
         _userService = userService;
         _authService = authService;
@@ -35,6 +36,7 @@ public class AdminController : ControllerBase
         _productPdfService = productPdfService;
         _brandService = brandService;
         _emailService = emailService;
+        _quizService = quizService;
     }
 
     /// <summary>
@@ -1736,17 +1738,21 @@ public class AdminController : ControllerBase
     {
         try
         {
-            // This will be implemented in the service layer
+            // 1. Clean all data
             await _productService.CleanAllDataAsync(cancellationToken);
             
+            // 2. Re-initialize database to create admin user immediately
+            var context = HttpContext.RequestServices.GetRequiredService<SmartTeam.Infrastructure.Data.SmartTeamDbContext>();
+            await SmartTeam.Infrastructure.Data.DbInitializer.InitializeAsync(context);
+            
             return Ok(new { 
-                message = "Database cleaned successfully. Admin user will be recreated on next startup.",
+                message = "Database cleaned and admin user restored successfully. You can now log in.",
                 timestamp = DateTime.UtcNow
             });
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = "Failed to clean database", message = ex.Message });
+            return BadRequest(new { error = "Failed to clean or initialize database", message = ex.Message });
         }
     }
 
@@ -1986,20 +1992,20 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Add predefined brands to database (Admin only)
+    /// Add Azerbaijani brands to database (Admin only)
     /// </summary>
-    [HttpPost("add-brands")]
+    [HttpPost("add-azerbaijani-brands")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> AddBrands(CancellationToken cancellationToken)
+    public async Task<IActionResult> AddAzerbaijaniBrands(CancellationToken cancellationToken)
     {
         try
         {
             var result = await _brandService.AddPredefinedBrandsAsync(cancellationToken);
             
             return Ok(new { 
-                message = "Brands processed successfully!",
+                message = "Azerbaijani brands added successfully!",
                 addedCount = result.AddedCount,
                 skippedCount = result.SkippedCount,
                 totalRequested = result.TotalRequested,
@@ -2013,4 +2019,118 @@ public class AdminController : ControllerBase
     }
 
     #endregion
+
+    #region Quiz Rule Management
+
+    /// <summary>
+    /// Get all quiz mapping rules (Admin only)
+    /// </summary>
+    [HttpGet("quiz/rules")]
+    [ProducesResponseType(typeof(IEnumerable<QuizRuleDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<QuizRuleDto>>> GetAllQuizRules(CancellationToken cancellationToken)
+    {
+        var rules = await _quizService.GetAllRulesAsync(cancellationToken);
+        return Ok(rules);
+    }
+
+    /// <summary>
+    /// Get a specific quiz rule by ID (Admin only)
+    /// </summary>
+    [HttpGet("quiz/rules/{id:guid}")]
+    [ProducesResponseType(typeof(QuizRuleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<QuizRuleDto>> GetQuizRule(Guid id, CancellationToken cancellationToken)
+    {
+        var rule = await _quizService.GetRuleByIdAsync(id, cancellationToken);
+        if (rule == null) return NotFound("Qayda tapılmadı.");
+        return Ok(rule);
+    }
+
+    /// <summary>
+    /// Create a new quiz rule: define which answers map to which products (Admin only)
+    /// </summary>
+    [HttpPost("quiz/rules")]
+    [ProducesResponseType(typeof(QuizRuleDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<QuizRuleDto>> CreateQuizRule(
+        [FromBody] CreateQuizRuleDto dto, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rule = await _quizService.CreateRuleAsync(dto, cancellationToken);
+            return CreatedAtAction(nameof(GetQuizRule), new { id = rule.Id }, rule);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Update an existing quiz rule (Admin only)
+    /// </summary>
+    [HttpPut("quiz/rules/{id:guid}")]
+    [ProducesResponseType(typeof(QuizRuleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<QuizRuleDto>> UpdateQuizRule(
+        Guid id, [FromBody] UpdateQuizRuleDto dto, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rule = await _quizService.UpdateRuleAsync(id, dto, cancellationToken);
+            return Ok(rule);
+        }
+        catch (ArgumentException ex)
+        {
+            return NotFound(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Delete a quiz rule (Admin only)
+    /// </summary>
+    [HttpDelete("quiz/rules/{id:guid}")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult> DeleteQuizRule(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await _quizService.DeleteRuleAsync(id, cancellationToken);
+        if (!result) return NotFound("Qayda tapılmadı.");
+        return Ok(new { message = "Qayda uğurla silindi." });
+    }
+
+    /// <summary>
+    /// Get all quiz questions with their answer options — for admin reference (Admin only)
+    /// </summary>
+    [HttpGet("quiz/questions")]
+    [ProducesResponseType(typeof(IEnumerable<QuizQuestionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IEnumerable<QuizQuestionDto>>> GetQuizQuestions(CancellationToken cancellationToken)
+    {
+        var questions = await _quizService.GetAllQuestionsAsync(cancellationToken);
+        return Ok(questions);
+    }
+
+    #endregion
+
 }

@@ -19,7 +19,15 @@ public class ProductImportResultDto
     public int SuccessCount { get; set; }
     public int FailureCount { get; set; }
     public List<string> Errors { get; set; } = new();
+    public List<ProductImportErrorDto> RowErrors { get; set; } = new();
     public List<ProductImportDetailDto> CreatedProducts { get; set; } = new();
+}
+
+public class ProductImportErrorDto
+{
+    public int RowNumber { get; set; }
+    public string? ProductName { get; set; }
+    public string Error { get; set; } = string.Empty;
 }
 
 public class ProductImportDetailDto

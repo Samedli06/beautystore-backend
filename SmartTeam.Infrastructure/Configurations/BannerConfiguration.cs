@@ -43,6 +43,23 @@ public class BannerConfiguration : IEntityTypeConfiguration<Banner>
         builder.Property(b => b.CreatedAt)
             .HasDefaultValueSql("GETUTCDATE()");
 
+        // Style fields
+        builder.Property(b => b.TitleColor).HasMaxLength(20).HasDefaultValue("#ffffff");
+        builder.Property(b => b.TitleAlign).HasMaxLength(20).HasDefaultValue("center");
+        builder.Property(b => b.DescriptionColor).HasMaxLength(20).HasDefaultValue("#eeeeee");
+        builder.Property(b => b.ButtonColor).HasMaxLength(20).HasDefaultValue("#ffffff");
+        builder.Property(b => b.ButtonTextColor).HasMaxLength(20).HasDefaultValue("#000000");
+
+        builder.Property(b => b.TitlePositionX).HasDefaultValue(50);
+        builder.Property(b => b.TitlePositionY).HasDefaultValue(20);
+        builder.Property(b => b.TitleFontSize).HasDefaultValue(32);
+        builder.Property(b => b.DescriptionPositionX).HasDefaultValue(50);
+        builder.Property(b => b.DescriptionPositionY).HasDefaultValue(40);
+        builder.Property(b => b.DescriptionFontSize).HasDefaultValue(16);
+        builder.Property(b => b.ButtonPositionX).HasDefaultValue(50);
+        builder.Property(b => b.ButtonPositionY).HasDefaultValue(65);
+        builder.Property(b => b.ButtonBorderRadius).HasDefaultValue(8);
+
         // Indexes
         builder.HasIndex(b => new { b.Type, b.IsActive });
         builder.HasIndex(b => new { b.StartDate, b.EndDate });

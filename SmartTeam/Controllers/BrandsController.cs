@@ -348,4 +348,34 @@ public class BrandsController : ControllerBase
             return StatusCode(500, new { error = "Failed to retrieve brands.", message = "Please try again later or contact support if the issue persists." });
         }
     }
+
+    /// <summary>
+    /// Search brands by name
+    /// </summary>
+    [HttpGet("search")]
+    [ProducesResponseType(typeof(IEnumerable<BrandDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<IEnumerable<BrandDto>>> SearchBrands([FromQuery] string q, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(q))
+            {
+                return BadRequest(new { error = "Invalid search term.", message = "Search term is required and cannot be empty." });
+            }
+
+            if (q.Length < 1)
+            {
+                return BadRequest(new { error = "Search term too short.", message = "Search term must be at least 1 character long." });
+            }
+
+            var brands = await _brandService.SearchBrandsAsync(q, cancellationToken);
+            return Ok(brands);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Failed to search brands.", message = "Please try again later or contact support if the issue persists." });
+        }
+    }
 }

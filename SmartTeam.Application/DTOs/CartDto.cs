@@ -48,6 +48,16 @@ public class AddToCartRequestDto
     public int Quantity { get; set; } = 1;
 }
 
+public class BulkAddToCartRequestDto
+{
+    public List<AddToCartRequestDto> Items { get; set; } = new();
+}
+
+public class BulkAddToCartDto
+{
+    public List<AddToCartDto> Items { get; set; } = new();
+}
+
 public class UpdateCartItemDto
 {
     public int Quantity { get; set; }

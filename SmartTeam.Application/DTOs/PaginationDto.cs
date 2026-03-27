@@ -95,7 +95,7 @@ public class ProductPaginationRequestDto : PaginationRequestDto
     /// <summary>
     /// Filter by category ID
     /// </summary>
-    public Guid? CategoryId { get; set; }
+    public List<Guid>? CategoryIds { get; set; }
 
     /// <summary>
     /// Filter by brand slug
@@ -178,7 +178,7 @@ public class SearchPaginationRequestDto : PaginationRequestDto
     /// <summary>
     /// Filter by category ID
     /// </summary>
-    public Guid? CategoryId { get; set; }
+    public List<Guid>? CategoryIds { get; set; }
 
     /// <summary>
     /// Filter by brand slug
@@ -204,7 +204,7 @@ public class HotDealsPaginationRequestDto : PaginationRequestDto
     /// <summary>
     /// Filter by category ID
     /// </summary>
-    public Guid? CategoryId { get; set; }
+    public List<Guid>? CategoryIds { get; set; }
 
     /// <summary>
     /// Filter by brand slug
@@ -230,7 +230,7 @@ public class RecommendedProductsPaginationRequestDto : PaginationRequestDto
     /// <summary>
     /// Category ID for category-based recommendations
     /// </summary>
-    public Guid? CategoryId { get; set; }
+    public List<Guid>? CategoryIds { get; set; }
 
     /// <summary>
     /// Filter by brand slug
