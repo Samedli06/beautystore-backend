@@ -22,37 +22,45 @@ public class BrandService : IBrandService
     }
 
     public async Task<IEnumerable<BrandDto>> GetAllBrandsAsync(CancellationToken cancellationToken = default)
+        => await GetAllBrandsAsync(includeInactive: false, cancellationToken);
+
+    public async Task<IEnumerable<BrandDto>> GetAllBrandsAsync(bool includeInactive, CancellationToken cancellationToken = default)
     {
         var brands = await _unitOfWork.Repository<Brand>().GetAllAsync(cancellationToken);
-        var activeBrands = brands.Where(b => b.IsActive).OrderBy(b => b.SortOrder);
-        
-        // Get all products to calculate counts
+
+        var filtered = includeInactive
+            ? brands.OrderBy(b => b.SortOrder)
+            : brands.Where(b => b.IsActive).OrderBy(b => b.SortOrder);
+
         var products = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
-        var activeProducts = products.Where(p => p.IsActive);
-        
-        var brandDtos = _mapper.Map<IEnumerable<BrandDto>>(activeBrands);
-        
-        // Calculate product count for each brand
+        var activeProducts = products.Where(p => p.IsActive).ToList();
+
+        var brandDtos = _mapper.Map<IEnumerable<BrandDto>>(filtered);
+
         foreach (var brandDto in brandDtos)
-        {
             brandDto.ProductCount = activeProducts.Count(p => p.BrandId == brandDto.Id);
-        }
-        
+
         return brandDtos;
     }
 
     public async Task<BrandDto?> GetBrandByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => await GetBrandByIdAsync(id, includeInactive: false, cancellationToken);
+
+    public async Task<BrandDto?> GetBrandByIdAsync(Guid id, bool includeInactive, CancellationToken cancellationToken = default)
     {
         var brand = await _unitOfWork.Repository<Brand>().GetByIdAsync(id, cancellationToken);
-        if (brand == null || !brand.IsActive)
+
+        if (brand == null)
+            return null;
+
+        if (!includeInactive && !brand.IsActive)
             return null;
 
         var brandDto = _mapper.Map<BrandDto>(brand);
-        
-        // Calculate product count
+
         var products = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
         brandDto.ProductCount = products.Count(p => p.BrandId == id && p.IsActive);
-        
+
         return brandDto;
     }
 
@@ -75,50 +83,40 @@ public class BrandService : IBrandService
 
     public async Task<BrandDto> CreateBrandAsync(CreateBrandDto createBrandDto, CancellationToken cancellationToken = default)
     {
-        var brand = new Brand();
-        
-        // Explicitly set all fields
-        brand.Id = Guid.NewGuid();
-        brand.Name = createBrandDto.Name.Trim();
-        brand.Slug = GenerateSlug(createBrandDto.Name);
-        brand.LogoUrl = createBrandDto.LogoUrl;
-        brand.IsActive = true; // Explicitly set to true
-        brand.SortOrder = createBrandDto.SortOrder;
-        brand.CreatedAt = DateTime.UtcNow;
-        brand.UpdatedAt = null;
+        var brandName = createBrandDto.Name.Trim();
 
         // Ensure all required fields are explicitly set
-        if (string.IsNullOrEmpty(brand.Name))
-            throw new ArgumentException("Brand name cannot be empty");
-        
-        if (string.IsNullOrEmpty(brand.Slug))
-            throw new ArgumentException("Brand slug cannot be empty");
+        if (string.IsNullOrEmpty(brandName))
+            throw new ArgumentException("Brand name cannot be empty.");
 
-        // Debug: Log the values being set
-        Console.WriteLine($"Creating brand: Name={brand.Name}, Slug={brand.Slug}, IsActive={brand.IsActive}, SortOrder={brand.SortOrder}");
+        // Check for duplicate brand name (case-insensitive)
+        var existingBrand = await _unitOfWork.Repository<Brand>()
+            .FirstOrDefaultAsync(b => b.Name.ToLower() == brandName.ToLower(), cancellationToken);
+        if (existingBrand != null)
+            throw new InvalidOperationException($"A brand with the name '{brandName}' already exists.");
 
-        // Use a different approach - create the brand with all fields explicitly set
+        var brandSlug = GenerateSlug(brandName);
+        if (string.IsNullOrEmpty(brandSlug))
+            throw new ArgumentException("Brand slug cannot be generated from the given name.");
+
         var brandToSave = new Brand
         {
-            Id = brand.Id,
-            Name = brand.Name,
-            Slug = brand.Slug,
-            LogoUrl = brand.LogoUrl,
-            IsActive = true, // Explicitly set again
-            SortOrder = brand.SortOrder,
-            CreatedAt = brand.CreatedAt,
+            Id = Guid.NewGuid(),
+            Name = brandName,
+            Slug = brandSlug,
+            LogoUrl = createBrandDto.LogoUrl,
+            IsActive = true,
+            SortOrder = createBrandDto.SortOrder,
+            CreatedAt = DateTime.UtcNow,
             UpdatedAt = null
         };
 
-        // Force Entity Framework to recognize all changes
         await _unitOfWork.Repository<Brand>().AddAsync(brandToSave, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var brandDto = _mapper.Map<BrandDto>(brandToSave);
-        
-        // Calculate product count (will be 0 for new brand)
         brandDto.ProductCount = 0;
-        
+
         return brandDto;
     }
 
@@ -169,7 +167,15 @@ public class BrandService : IBrandService
     {
         var brand = await _unitOfWork.Repository<Brand>().GetByIdAsync(id, cancellationToken);
         if (brand == null)
-            throw new ArgumentException("Brand not found.");
+            throw new ArgumentException($"Brand with ID '{id}' was not found.");
+
+        var newName = updateBrandDto.Name.Trim();
+
+        // Check for duplicate name (case-insensitive, exclude current brand)
+        var duplicate = await _unitOfWork.Repository<Brand>()
+            .FirstOrDefaultAsync(b => b.Name.ToLower() == newName.ToLower() && b.Id != id, cancellationToken);
+        if (duplicate != null)
+            throw new InvalidOperationException($"A brand with the name '{newName}' already exists.");
 
         _mapper.Map(updateBrandDto, brand);
         brand.UpdatedAt = DateTime.UtcNow;
@@ -178,11 +184,10 @@ public class BrandService : IBrandService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var brandDto = _mapper.Map<BrandDto>(brand);
-        
-        // Calculate product count
+
         var products = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
         brandDto.ProductCount = products.Count(p => p.BrandId == id && p.IsActive);
-        
+
         return brandDto;
     }
 
@@ -198,156 +203,56 @@ public class BrandService : IBrandService
         return true;
     }
 
-    public async Task<AddBrandsResultDto> AddPredefinedBrandsAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            // Predefined brands list
-            var brandNames = new[]
-            {
-                "ALERANA", "Anastasia Beverly Hills", "Armani Beauty", "Bare Minerals", "BATH & BODY", "BATISTE", 
-                "Beauty Blender", "Beauty of Joseon", "Beili", "BENEFIT", "BIO-OIL", "BIODERMA", "Bobbi Brown", 
-                "BURBERRY", "CAUDALIE", "CHARLOTTE TILBURY", "Clinique", "COSRX", "DERMEDIC", "DIOR", 
-                "DOLCE & GABBANA", "DRY IDEA", "EMBRYOLISSE", "ENOUGH", "ESSENCE", "ESSENTIALS", "Estée Lauder", 
-                "FENTY BEAUTY", "GA-DE", "GUCCI", "GUERLAIN", "GUESS", "Haus Labs", "HEIMISH", "HUDA BEAUTY", 
-                "ISADORA", "JO MALONE", "JOJOBA", "JOWE", "KENZO", "Kiehl's", "KIKO", "KM SOLUTION", "KRYOLAN", 
-                "L'Oréal Paris", "LADOR", "Lancôme", "LOSANGELES", "LUXVISAGE", "MAC", "Macy's", "Make Up For Ever", 
-                "MANYO", "MARC JACOBS", "MAYBELLINE", "MEDI-PEEL", "Michael Kors", "MISS TAIS", "MIZON", "MORPHE", 
-                "NARS", "OFRA", "ORIGINS", "Peter Thomas Roth", "PETITE MAISON", "Physicians Formula", "RARE BEAUTY", 
-                "Real Techniques", "RELOUIS", "REVOLUTION", "SCANDAL", "SEPHORA", "SINOZ", "SMASHBOX", 
-                "Sol de Janeiro", "Tarte", "TECNIC", "THE INKEY LIST", "THE ORDINARY", "THE PUREST", "theBalm", 
-                "TIMELESS", "TOM FORD", "TONY MOLY", "TOO FACED", "TOPFACE", "TRESAN", "TRICUP", "URBAN DECAY", 
-                "VALENTINO PUFFER", "Victoria's Secret", "Wet n Wild", "WISHFUL", "Yves Saint Laurent"
-            };
 
-
-            // Get all existing brands for duplicate checking and sort order calculation
-            var allBrands = await _unitOfWork.Repository<Brand>().GetAllAsync(cancellationToken);
-            
-            // Get existing brand names (case-insensitive comparison)
-            var existingBrandNames = allBrands
-                .Where(b => brandNames.Any(bn => string.Equals(bn, b.Name, StringComparison.OrdinalIgnoreCase)))
-                .Select(b => b.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            // Get the maximum sort order to continue from there
-            var maxSortOrder = allBrands.Any() ? allBrands.Max(b => b.SortOrder) : 0;
-
-            var brandsToAdd = new List<Brand>();
-            var sortOrder = maxSortOrder + 1;
-            var skippedCount = 0;
-
-            foreach (var brandName in brandNames)
-            {
-                // Skip if brand already exists (case-insensitive)
-                if (existingBrandNames.Any(existing => string.Equals(existing, brandName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    skippedCount++;
-                    continue;
-                }
-
-                var brand = new Brand
-                {
-                    Id = Guid.NewGuid(),
-                    Name = brandName,
-                    Slug = GenerateSlug(brandName),
-                    IsActive = true,
-                    SortOrder = sortOrder++,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = null
-                };
-                brandsToAdd.Add(brand);
-            }
-
-            // Add only new brands to database using raw SQL to bypass EF configuration issues
-            if (brandsToAdd.Any())
-            {
-                try
-                {
-                    foreach (var brand in brandsToAdd)
-                    {
-                        var sql = @"
-                            INSERT INTO Brand (Id, Name, Slug, IsActive, SortOrder, CreatedAt, UpdatedAt) 
-                            VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6})";
-
-                        await _unitOfWork.ExecuteSqlRawAsync(sql, 
-                            brand.Id,
-                            brand.Name,
-                            brand.Slug,
-                            1, // IsActive = true (1 for bit type)
-                            brand.SortOrder,
-                            brand.CreatedAt,
-                            null!); // UpdatedAt = NULL
-                    }
-                }
-                catch (Exception dbEx)
-                {
-                    throw new InvalidOperationException($"Database error while adding brands: {dbEx.Message}. Inner exception: {dbEx.InnerException?.Message}", dbEx);
-                }
-            }
-
-            return new AddBrandsResultDto
-            {
-                AddedCount = brandsToAdd.Count,
-                SkippedCount = skippedCount,
-                TotalRequested = brandNames.Length
-            };
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to add predefined brands: {ex.Message}", ex);
-        }
-    }
 
     public async Task<BrandDto> CreateBrandWithImageAsync(CreateBrandWithImageDto createBrandDto, IFormFile imageFile, CancellationToken cancellationToken = default)
     {
+        var brandName = createBrandDto.Name.Trim();
+
+        if (string.IsNullOrEmpty(brandName))
+            throw new ArgumentException("Brand name cannot be empty.");
+
+        // Check for duplicate brand name (case-insensitive)
+        var existingBrand = await _unitOfWork.Repository<Brand>()
+            .FirstOrDefaultAsync(b => b.Name.ToLower() == brandName.ToLower(), cancellationToken);
+        if (existingBrand != null)
+            throw new InvalidOperationException($"A brand with the name '{brandName}' already exists.");
+
         // Validate image file
         if (!_fileUploadService.IsValidImageFile(imageFile))
-        {
-            throw new ArgumentException("Invalid image file format. Please upload a valid image file.");
-        }
+            throw new ArgumentException("Invalid image file format. Allowed formats: JPG, JPEG, PNG, GIF, WebP.");
+
+        var brandSlug = GenerateSlug(brandName);
+        if (string.IsNullOrEmpty(brandSlug))
+            throw new ArgumentException("Brand slug cannot be generated from the given name.");
 
         // Upload the image
         var logoUrl = await _fileUploadService.UploadFileAsync(imageFile, "brands");
 
-        // Create the brand with the uploaded logo
         var brandId = Guid.NewGuid();
-        var brandName = createBrandDto.Name.Trim();
-        var brandSlug = GenerateSlug(brandName);
         var createdAt = DateTime.UtcNow;
 
-        // Ensure all required fields are explicitly set
-        if (string.IsNullOrEmpty(brandName))
-            throw new ArgumentException("Brand name cannot be empty");
-        
-        if (string.IsNullOrEmpty(brandSlug))
-            throw new ArgumentException("Brand slug cannot be empty");
-
-        // Use raw SQL to insert with explicit IsActive value
         var sql = @"
             INSERT INTO Brand (Id, Name, Slug, LogoUrl, IsActive, SortOrder, CreatedAt, UpdatedAt) 
             VALUES ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7})";
 
-        await _unitOfWork.ExecuteSqlRawAsync(sql, 
+        await _unitOfWork.ExecuteSqlRawAsync(sql,
             brandId,
             brandName,
             brandSlug,
             logoUrl,
-            1, // IsActive = true (1 for bit type)
+            1, // IsActive = true
             createBrandDto.SortOrder,
             createdAt,
-            null!); // UpdatedAt = NULL
+            null!);
 
-        // Retrieve the created brand
         var brand = await _unitOfWork.Repository<Brand>().GetByIdAsync(brandId, cancellationToken);
         if (brand == null)
-            throw new InvalidOperationException("Failed to create brand");
+            throw new InvalidOperationException("Brand was saved but could not be retrieved. Please try again.");
 
         var brandDto = _mapper.Map<BrandDto>(brand);
-        
-        // Calculate product count (will be 0 for new brand)
         brandDto.ProductCount = 0;
-        
+
         return brandDto;
     }
 
@@ -355,25 +260,27 @@ public class BrandService : IBrandService
     {
         var brand = await _unitOfWork.Repository<Brand>().GetByIdAsync(id, cancellationToken);
         if (brand == null)
-            throw new ArgumentException("Brand not found.");
+            throw new ArgumentException($"Brand with ID '{id}' was not found.");
 
-        // Update basic brand information
-        brand.Name = updateBrandDto.Name.Trim();
-        brand.Slug = GenerateSlug(updateBrandDto.Name);
+        var newName = updateBrandDto.Name.Trim();
+
+        // Check for duplicate name (case-insensitive, exclude current brand)
+        var duplicate = await _unitOfWork.Repository<Brand>()
+            .FirstOrDefaultAsync(b => b.Name.ToLower() == newName.ToLower() && b.Id != id, cancellationToken);
+        if (duplicate != null)
+            throw new InvalidOperationException($"A brand with the name '{newName}' already exists.");
+
+        brand.Name = newName;
+        brand.Slug = GenerateSlug(newName);
         brand.IsActive = updateBrandDto.IsActive;
         brand.SortOrder = updateBrandDto.SortOrder;
         brand.UpdatedAt = DateTime.UtcNow;
 
-        // Handle image update if provided
         if (imageFile != null && imageFile.Length > 0)
         {
-            // Validate image file
             if (!_fileUploadService.IsValidImageFile(imageFile))
-            {
-                throw new ArgumentException("Invalid image file format. Please upload a valid image file.");
-            }
+                throw new ArgumentException("Invalid image file format. Allowed formats: JPG, JPEG, PNG, GIF, WebP.");
 
-            // Upload the new image
             var logoUrl = await _fileUploadService.UploadFileAsync(imageFile, "brands");
             brand.LogoUrl = logoUrl;
         }
@@ -382,11 +289,10 @@ public class BrandService : IBrandService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var brandDto = _mapper.Map<BrandDto>(brand);
-        
-        // Calculate product count
+
         var products = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
         brandDto.ProductCount = products.Count(p => p.BrandId == id && p.IsActive);
-        
+
         return brandDto;
     }
 
@@ -468,29 +374,70 @@ public class BrandService : IBrandService
             HasPreviousPage = page > 1
         };
     }
-    public async Task<IEnumerable<BrandDto>> SearchBrandsAsync(string searchTerm, CancellationToken cancellationToken = default)
+
+    public async Task<BrandSearchResultDto> SearchBrandsPagedAsync(BrandSearchRequestDto request, CancellationToken cancellationToken = default)
     {
-        var brands = await _unitOfWork.Repository<Brand>().GetAllAsync(cancellationToken);
-        var filteredBrands = brands.Where(b => b.IsActive);
-        
-        if (!string.IsNullOrWhiteSpace(searchTerm))
+        var allBrands = await _unitOfWork.Repository<Brand>().GetAllAsync(cancellationToken);
+
+        // --- Active status filter ---
+        var filtered = request.IncludeInactive
+            ? allBrands.AsQueryable()
+            : allBrands.Where(b => b.IsActive).AsQueryable();
+
+        // --- Name search (partial, case-insensitive) ---
+        var query = request.Q?.Trim();
+        if (!string.IsNullOrWhiteSpace(query))
         {
-            var search = searchTerm.ToLower();
-            filteredBrands = filteredBrands.Where(b => b.Name.ToLower().Contains(search));
+            var term = query.ToLower();
+            filtered = filtered.Where(b => b.Name.ToLower().Contains(term));
         }
-        
-        var sortedBrands = filteredBrands.OrderBy(b => b.SortOrder).ToList();
-        var brandDtos = _mapper.Map<IEnumerable<BrandDto>>(sortedBrands);
-        
-        // Calculate product counts
-        var products = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
-        var activeProducts = products.Where(p => p.IsActive);
-        
-        foreach (var brandDto in brandDtos)
+
+        // --- Calculate product counts first (needed for hasProducts filter & sorting) ---
+        var allProducts = await _unitOfWork.Repository<Product>().GetAllAsync(cancellationToken);
+        var activeProductsList = allProducts.Where(p => p.IsActive).ToList();
+
+        var brandList = filtered.ToList();
+        var brandDtos = _mapper.Map<List<BrandDto>>(brandList);
+
+        foreach (var dto in brandDtos)
+            dto.ProductCount = activeProductsList.Count(p => p.BrandId == dto.Id);
+
+        // --- HasProducts filter ---
+        if (request.HasProducts.HasValue)
         {
-            brandDto.ProductCount = activeProducts.Count(p => p.BrandId == brandDto.Id);
+            brandDtos = request.HasProducts.Value
+                ? brandDtos.Where(b => b.ProductCount > 0).ToList()
+                : brandDtos.Where(b => b.ProductCount == 0).ToList();
         }
-        
-        return brandDtos;
+
+        // --- Sorting ---
+        var isDesc = request.SortOrder?.ToLower() == "desc";
+        brandDtos = request.SortBy?.ToLower() switch
+        {
+            "sortorder"    => isDesc ? brandDtos.OrderByDescending(b => b.SortOrder).ToList()    : brandDtos.OrderBy(b => b.SortOrder).ToList(),
+            "createdat"    => isDesc ? brandDtos.OrderByDescending(b => b.CreatedAt).ToList()    : brandDtos.OrderBy(b => b.CreatedAt).ToList(),
+            "productcount" => isDesc ? brandDtos.OrderByDescending(b => b.ProductCount).ToList() : brandDtos.OrderBy(b => b.ProductCount).ToList(),
+            _              => isDesc ? brandDtos.OrderByDescending(b => b.Name).ToList()         : brandDtos.OrderBy(b => b.Name).ToList()
+        };
+
+        // --- Pagination ---
+        var totalCount = brandDtos.Count;
+        var totalPages = (int)Math.Ceiling((double)totalCount / request.PageSize);
+        var paged = brandDtos
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToList();
+
+        return new BrandSearchResultDto
+        {
+            Items          = paged,
+            TotalCount     = totalCount,
+            Page           = request.Page,
+            PageSize       = request.PageSize,
+            TotalPages     = totalPages,
+            HasNextPage    = request.Page < totalPages,
+            HasPreviousPage = request.Page > 1,
+            Query          = string.IsNullOrWhiteSpace(query) ? null : query
+        };
     }
 }

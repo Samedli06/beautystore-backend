@@ -44,6 +44,13 @@ public class SmartTeamDbContext : DbContext
     public DbSet<QuizRuleAnswer> QuizRuleAnswers { get; set; }
     public DbSet<QuizRuleProduct> QuizRuleProducts { get; set; }
 
+    // Credit Request (Şəxsiyyət vəsiqəsi ilə kredit) — lead system, isolated from orders/payments
+    public DbSet<CreditRequest> CreditRequests { get; set; }
+    public DbSet<CreditRequestItem> CreditRequestItems { get; set; }
+
+    // Expargo weight-based delivery pricing rules (admin-managed)
+    public DbSet<ExpargoWeightPricingRule> ExpargoWeightPricingRules { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

@@ -398,6 +398,94 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("SmartTeam.Domain.Entities.CreditRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ConvertedOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("Status")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CreditRequests", (string)null);
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.CreditRequestItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CreditRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ProductSku")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TotalPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreditRequestId");
+
+                    b.ToTable("CreditRequestItems", (string)null);
+                });
+
             modelBuilder.Entity("SmartTeam.Domain.Entities.DownloadableFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -478,6 +566,40 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.HasIndex("UpdatedBy");
 
                     b.ToTable("DownloadableFiles", (string)null);
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.ExpargoWeightPricingRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("AdditionalPricePerKg")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BasePrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("MaxWeight")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("MinWeight")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExpargoWeightPricingRules");
                 });
 
             modelBuilder.Entity("SmartTeam.Domain.Entities.Filter", b =>
@@ -649,6 +771,9 @@ namespace SmartTeam.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AzerpostOrderId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("datetime2")
@@ -669,10 +794,24 @@ namespace SmartTeam.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<decimal>("DeliveryFee")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<string>("DeliveryPostCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DeliveryType")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("DiscountAmount")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("decimal(18,2)")
                         .HasDefaultValue(0m);
+
+                    b.Property<bool>("Fragile")
+                        .HasColumnType("bit");
 
                     b.Property<decimal?>("InstallmentInterestAmount")
                         .HasColumnType("decimal(18,2)");
@@ -695,6 +834,9 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Property<decimal?>("OriginalAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<decimal>("PackageWeight")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<Guid?>("PaymentId")
                         .HasColumnType("uniqueidentifier");
 
@@ -709,6 +851,9 @@ namespace SmartTeam.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int>("ShippingMethod")
+                        .HasColumnType("int");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -718,11 +863,17 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Property<decimal>("TotalAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<decimal>("TotalWeightKg")
+                        .HasColumnType("decimal(10,3)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserPassport")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("WalletAmountUsed")
                         .HasColumnType("decimal(18,2)");
@@ -1012,6 +1163,9 @@ namespace SmartTeam.Infrastructure.Migrations
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<decimal>("WeightKg")
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 
@@ -1696,6 +1850,17 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Navigation("ParentCategory");
                 });
 
+            modelBuilder.Entity("SmartTeam.Domain.Entities.CreditRequestItem", b =>
+                {
+                    b.HasOne("SmartTeam.Domain.Entities.CreditRequest", "CreditRequest")
+                        .WithMany("Items")
+                        .HasForeignKey("CreditRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreditRequest");
+                });
+
             modelBuilder.Entity("SmartTeam.Domain.Entities.DownloadableFile", b =>
                 {
                     b.HasOne("SmartTeam.Domain.Entities.User", "CreatedByUser")
@@ -2033,6 +2198,11 @@ namespace SmartTeam.Infrastructure.Migrations
                     b.Navigation("Products");
 
                     b.Navigation("SubCategories");
+                });
+
+            modelBuilder.Entity("SmartTeam.Domain.Entities.CreditRequest", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("SmartTeam.Domain.Entities.Filter", b =>

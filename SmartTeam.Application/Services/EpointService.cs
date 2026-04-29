@@ -45,8 +45,10 @@ public class EpointService : IEpointService
                 { "language", _settings.Language },
                 { "description", description ?? $"Order #{orderId}" },
                 { "order_id", orderId.ToString() },
-                { "success_redirect_url", $"https://gunaybeauty.com/api/v1/Payment/success?order_id={orderId}" },
-                { "error_redirect_url", $"https://gunaybeauty.com/api/v1/Payment/error?order_id={orderId}" }
+                // result_url = server-to-server callback where Epoint POSTs the final payment result
+                { "result_url", $"https://avtoo027-001-site1.ntempurl.com/api/v1/Payment/result" },
+                { "success_redirect_url", $"https://avtoo027-001-site1.ntempurl.com/api/v1/Payment/success?order_id={orderId}" },
+                { "error_redirect_url", $"https://avtoo027-001-site1.ntempurl.com/api/v1/Payment/error?order_id={orderId}" }
             };
 
             // Add installment period if provided (Epoint expects this for installment payments)

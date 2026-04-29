@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using SmartTeam.Application.Services;
+using SmartTeam.Application.DTOs;
 using FluentValidation;
 using System.Reflection;
 
@@ -33,9 +35,14 @@ public static class DependencyInjection
         services.AddScoped<IInstallmentService, InstallmentService>();
         services.AddScoped<IQuizService, QuizService>();
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<ICreditRequestService, CreditRequestService>();
+        services.AddScoped<IExpargoService, ExpargoService>();
         
         // Add HttpClient for EpointService
         services.AddHttpClient<IEpointService, EpointService>();
+
+        // Add HttpClient for AzerpostService
+        services.AddHttpClient<IAzerpostService, AzerpostService>();
 
         return services;
     }

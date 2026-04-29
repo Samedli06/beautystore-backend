@@ -31,12 +31,12 @@ namespace SmartTeam
                         "https://localhost:7222",
                         "http://localhost:3000",
                         "https://localhost:3000",
-                        "https://gunaybeauty.com",
-                        "http://gunaybeauty.com",
-                        "https://www.gunaybeauty.com",
-                        "http://www.gunaybeauty.com",
-                        "http://gunaybeauty-001-site1.ltempurl.com",
-                        "https://gunaybeauty.netlify.app"
+                        "https://avto-next-e-commerce.vercel.app/",
+                        "https://avto-next-e-commerce.vercel.app",
+                        "https://avto027.com",
+                        "http://avto027.com",
+                        "https://www.avto027.com",
+                        "http://www.avto027.com"
                     )
                     .AllowAnyHeader()
                     .AllowAnyMethod()
@@ -49,6 +49,7 @@ namespace SmartTeam
             builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
             builder.Services.Configure<SmartTeam.Infrastructure.Services.EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
             builder.Services.Configure<SmartTeam.Application.DTOs.EpointSettings>(builder.Configuration.GetSection("EpointSettings"));
+            builder.Services.Configure<SmartTeam.Application.DTOs.AzerpostSettings>(builder.Configuration.GetSection("AzerpostSettings"));
             var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
             builder.Services.AddAuthentication(options =>
             {
@@ -76,9 +77,9 @@ namespace SmartTeam
             {
                 options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
                 {
-                    Title = "GunayBeauty E-Commerce API",
+                    Title = "Avto027 E-Commerce API",
                     Version = "v1",
-                    Description = "A comprehensive beauty e-commerce API with role-based pricing and JWT authentication"
+                    Description = "A comprehensive automotive e-commerce API with role-based pricing and JWT authentication"
                 });
 
                 options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
@@ -172,7 +173,7 @@ namespace SmartTeam
             app.UseSwagger();
             app.UseSwaggerUI(options =>
             {
-                options.SwaggerEndpoint("/swagger/v1/swagger.json", "GunayBeauty API v1");
+                options.SwaggerEndpoint("/swagger/v1/swagger.json", "Avto027 API v1");
                 options.RoutePrefix = "swagger";
             });
 

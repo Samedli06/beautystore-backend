@@ -1758,33 +1758,6 @@ public class AdminController : ControllerBase
 
     #endregion
 
-    #region Category Management
-
-    /// <summary>
-    /// Add Azerbaijani categories to database (Admin only)
-    /// </summary>
-    [HttpPost("add-azerbaijani-categories")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> AddAzerbaijaniCategories(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _productService.AddAzerbaijaniCategoriesAsync(cancellationToken);
-            
-            return Ok(new { 
-                message = "Azerbaijani categories added successfully!",
-                timestamp = DateTime.UtcNow
-            });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { error = "Failed to add categories", message = ex.Message });
-        }
-    }
-
-    #endregion
 
     #region Brand Management
 
@@ -1797,7 +1770,8 @@ public class AdminController : ControllerBase
     {
         try
         {
-            var brands = await _brandService.GetAllBrandsAsync(cancellationToken);
+            // Admin always sees all brands including inactive
+            var brands = await _brandService.GetAllBrandsAsync(includeInactive: true, cancellationToken);
             return Ok(brands);
         }
         catch (Exception ex)
@@ -1816,9 +1790,10 @@ public class AdminController : ControllerBase
     {
         try
         {
-            var brand = await _brandService.GetBrandByIdAsync(id, cancellationToken);
+            // Admin always sees inactive brands too
+            var brand = await _brandService.GetBrandByIdAsync(id, includeInactive: true, cancellationToken);
             if (brand == null)
-                return NotFound();
+                return NotFound(new { error = "Brand not found.", message = $"No brand with ID '{id}' was found." });
 
             return Ok(brand);
         }
@@ -1988,33 +1963,6 @@ public class AdminController : ControllerBase
                 stackTrace = ex.StackTrace,
                 innerException = ex.InnerException?.Message
             });
-        }
-    }
-
-    /// <summary>
-    /// Add Azerbaijani brands to database (Admin only)
-    /// </summary>
-    [HttpPost("add-azerbaijani-brands")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> AddAzerbaijaniBrands(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _brandService.AddPredefinedBrandsAsync(cancellationToken);
-            
-            return Ok(new { 
-                message = "Azerbaijani brands added successfully!",
-                addedCount = result.AddedCount,
-                skippedCount = result.SkippedCount,
-                totalRequested = result.TotalRequested,
-                timestamp = DateTime.UtcNow
-            });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { error = "Failed to add brands", message = ex.Message });
         }
     }
 

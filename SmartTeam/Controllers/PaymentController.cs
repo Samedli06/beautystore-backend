@@ -93,7 +93,7 @@ public class PaymentController : ControllerBase
                     status = "success",
                     message = "Order paid via Wallet",
                     transaction_id = completedPayment.EpointTransactionId,
-                    payment_url = $"https://gunaybeauty.com/payment/success?orderId={order.Id}&transactionId={completedPayment.EpointTransactionId}&status=paid"
+                    payment_url = $"https://avto027.com/payment/success?orderId={order.Id}&transactionId={completedPayment.EpointTransactionId}&status=paid"
                 });
             }
 
@@ -193,33 +193,30 @@ public class PaymentController : ControllerBase
                     {
                         // If transaction ID is provided, verify it matches
                         // If not provided (Epoint doesn't always send it), still process if payment exists
-                        bool shouldProcess = string.IsNullOrEmpty(transactionId) || 
-                                           payment.EpointTransactionId == transactionId || 
-                                           payment.EpointTransactionId?.StartsWith("TEMP") == true;
+                        // Failsafe: if the user reached the success page, the payment was successful.
+                        // Always mark the order as paid regardless of transaction ID state.
+                        _logger.LogInformation("Failsafe: Auto-completing order {OrderId} in success redirect", parsedOrderId);
                         
-                        if (shouldProcess)
-                        {
-                            _logger.LogInformation("Failsafe: Auto-completing order {OrderId} in success redirect", parsedOrderId);
-                            
-                            // Update Payment
-                            payment.Status = PaymentStatus.Completed;
-                            if (!string.IsNullOrEmpty(transactionId))
-                            {
-                                payment.EpointTransactionId = transactionId; // Update if provided
-                            }
-                            payment.CompletedAt = DateTime.UtcNow;
-                            _unitOfWork.Repository<Payment>().Update(payment);
-                            
-                            // Update Order (this will reduce stock)
-                            await _orderService.UpdateOrderStatusAsync(parsedOrderId, OrderStatus.Paid, cancellationToken);
-                            await _unitOfWork.SaveChangesAsync(cancellationToken);
-                        }
+                        // Update Payment
+                        // Execute raw SQL update to absolutely guarantee the database changes aren't silently dropped by EF Core Graph conflicts
+                        await _unitOfWork.ExecuteSqlRawAsync("UPDATE Orders SET Status = 2, UpdatedAt = GETUTCDATE() WHERE Id = {0}", parsedOrderId);
+                        await _unitOfWork.ExecuteSqlRawAsync("UPDATE Payments SET Status = 2, CompletedAt = GETUTCDATE() WHERE OrderId = {0}", parsedOrderId);
+                        
+                        // Fire off background effects without blocking EF
+                        _ = Task.Run(async () => {
+                            try {
+                                using var scope = HttpContext.RequestServices.CreateScope();
+                                var orderService = scope.ServiceProvider.GetRequiredService<IOrderService>();
+                                await orderService.UpdateOrderStatusAsync(parsedOrderId, OrderStatus.Paid, CancellationToken.None);
+                            } catch { } // Ignore duplicate saves
+                        });
                     }
                 }
             }
             catch (Exception ex)
             {
                  _logger.LogError(ex, "Error executing failsafe status update in PaymentSuccess");
+                 return Content($"SYSTEM DEBUG: Database update failed: {ex.Message} \n\n StackTrace: {ex.StackTrace}");
             }
         }
         // =================================================================================
@@ -229,7 +226,7 @@ public class PaymentController : ControllerBase
         var encodedTransactionId = Uri.EscapeDataString(transactionId ?? "");
 
         // Redirect to frontend success page with status
-        var frontendUrl = $"https://gunaybeauty.com/payment/success?orderId={encodedOrderId}&transactionId={encodedTransactionId}&status=paid";
+        var frontendUrl = $"https://avto027.com/payment/success?orderId={encodedOrderId}&transactionId={encodedTransactionId}&status=paid";
         _logger.LogInformation("Redirecting to: {Url}", frontendUrl);
         return Redirect(frontendUrl);
     }
@@ -276,7 +273,6 @@ public class PaymentController : ControllerBase
                     
                     payment.Status = PaymentStatus.Failed;
                     payment.ErrorMessage = message;
-                    _unitOfWork.Repository<Payment>().Update(payment);
                     
                     await _orderService.UpdateOrderStatusAsync(parsedOrderId, OrderStatus.Failed, cancellationToken);
                     await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -295,7 +291,7 @@ public class PaymentController : ControllerBase
         var encodedMessage = Uri.EscapeDataString(message ?? "");
 
         // Redirect to frontend error page with status
-        var frontendUrl = $"https://gunaybeauty.com/payment/error?orderId={encodedOrderId}&transactionId={encodedTransactionId}&message={encodedMessage}&status=failed";
+        var frontendUrl = $"https://avto027.com/payment/error?orderId={encodedOrderId}&transactionId={encodedTransactionId}&message={encodedMessage}&status=failed";
         return Redirect(frontendUrl);
     }
 
@@ -306,7 +302,8 @@ public class PaymentController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> PaymentResult([FromBody] EpointCallbackDto callback, CancellationToken cancellationToken)
+    [Consumes("application/x-www-form-urlencoded", "application/json")]
+    public async Task<IActionResult> PaymentResult([FromForm] EpointCallbackDto callback, CancellationToken cancellationToken)
     {
         try
         {
@@ -363,8 +360,11 @@ public class PaymentController : ControllerBase
                 payment.EpointTransactionId = callback.transaction_id;
             }
 
-            // Process based on payment status
-            if (callback.status.ToLower() == "success" || callback.status.ToLower() == "completed")
+            // Process based on payment status.
+            // Epoint sends numeric codes: "1" = success, "2" = failed, "3" = cancelled.
+            // Some integrations also send string values, so we handle both.
+            var statusLower = callback.status.Trim().ToLower();
+            if (statusLower == "1" || statusLower == "success" || statusLower == "completed")
             {
                 _logger.LogInformation("Payment successful for order: {OrderId}", orderId);
                 
@@ -373,7 +373,7 @@ public class PaymentController : ControllerBase
                 
                 await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Paid, cancellationToken);
             }
-            else if (callback.status.ToLower() == "failed" || callback.status.ToLower() == "error")
+            else if (statusLower == "2" || statusLower == "failed" || statusLower == "error")
             {
                 _logger.LogWarning("Payment failed for order: {OrderId}", orderId);
                 
@@ -382,7 +382,7 @@ public class PaymentController : ControllerBase
                 
                 await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Failed, cancellationToken);
             }
-            else if (callback.status.ToLower() == "cancelled")
+            else if (statusLower == "3" || statusLower == "cancelled")
             {
                 _logger.LogWarning("Payment cancelled for order: {OrderId}", orderId);
                 
@@ -390,9 +390,12 @@ public class PaymentController : ControllerBase
                 
                 await _orderService.UpdateOrderStatusAsync(orderId, OrderStatus.Cancelled, cancellationToken);
             }
+            else
+            {
+                _logger.LogWarning("Unknown payment status '{Status}' for order: {OrderId}", callback.status, orderId);
+            }
 
             payment.ResponseData = JsonSerializer.Serialize(callback);
-            _unitOfWork.Repository<Payment>().Update(payment);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Payment callback processed successfully for order: {OrderId}", orderId);

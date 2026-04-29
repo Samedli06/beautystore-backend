@@ -10,6 +10,7 @@ public class CartDto
     public decimal TotalPriceBeforeDiscount { get; set; }
     public decimal TotalDiscount { get; set; }
     public int TotalQuantity { get; set; }
+    public decimal TotalWeightKg { get; set; }
     
     // Promo code fields
     public string? AppliedPromoCode { get; set; }
@@ -28,11 +29,13 @@ public class CartItemDto
     public Guid ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string ProductSku { get; set; } = string.Empty;
+    public string ProductSlug { get; set; } = string.Empty;
     public string? ProductDescription { get; set; }
     public string? ProductImageUrl { get; set; }
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal TotalPrice { get; set; }
+    public decimal WeightKg { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

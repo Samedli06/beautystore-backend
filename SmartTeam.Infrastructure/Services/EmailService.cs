@@ -18,7 +18,7 @@ public class EmailService : IEmailService
     {
         var resetUrl = $"{_emailSettings.BaseUrl}/reset-password?token={resetToken}";
         
-        var subject = "GunayBeauty - Şifrəni Sıfırlama";
+        var subject = "Avto027 - Şifrəni Sıfırlama";
         var body = GeneratePasswordResetEmailBody(userName, resetUrl);
 
         return await SendEmailAsync(email, subject, body, true, cancellationToken);
@@ -55,7 +55,7 @@ public class EmailService : IEmailService
 <html>
 <head>
     <meta charset='utf-8'>
-    <title>GunayBeauty - Şifrə Sıfırlama</title>
+    <title>Avto027 - Şifrə Sıfırlama</title>
     <style>
         body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
         .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
@@ -69,13 +69,13 @@ public class EmailService : IEmailService
 <body>
     <div class='container'>
         <div class='header'>
-            <h1>🔐 GunayBeauty</h1>
+            <h1>🔐 Avto027</h1>
             <h2>Şifrə Sıfırlama Tələbi</h2>
         </div>
         <div class='content'>
             <p>Salam {userName},</p>
             
-            <p>GunayBeauty hesabınız üçün şifrə sıfırlama tələbi aldıq. Əgər bu tələbi siz etməmisinizsə, bu e-poçtu görməməzlikdən gəlin.</p>
+            <p>Avto027 hesabınız üçün şifrə sıfırlama tələbi aldıq. Əgər bu tələbi siz etməmisinizsə, bu e-poçtu görməməzlikdən gəlin.</p>
             
             <p>Şifrənizi sıfırlamaq üçün aşağıdakı düyməyə klikləyin:</p>
             
@@ -96,8 +96,8 @@ public class EmailService : IEmailService
             <p style='word-break: break-all; background: #e9ecef; padding: 10px; border-radius: 5px;'>{resetUrl}</p>
         </div>
         <div class='footer'>
-            <p>Bu e-poçt GunayBeauty sistemi tərəfindən avtomatik göndərilmişdir.</p>
-            <p>© 2026 GunayBeauty. Bütün hüquqlar qorunur.</p>
+            <p>Bu e-poçt Avto027 sistemi tərəfindən avtomatik göndərilmişdir.</p>
+            <p>© 2026 Avto027. Bütün hüquqlar qorunur.</p>
         </div>
     </div>
 </body>
@@ -111,7 +111,7 @@ public class EmailSettings
     public int SmtpPort { get; set; } = 587;
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
-    public string DisplayName { get; set; } = "GunayBeauty";
+    public string DisplayName { get; set; } = "Avto027";
     public bool EnableSsl { get; set; } = true;
     public string BaseUrl { get; set; } = "https://yourdomain.com";
 }

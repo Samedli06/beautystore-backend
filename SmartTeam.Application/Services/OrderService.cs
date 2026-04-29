@@ -2,6 +2,7 @@ using AutoMapper;
 using SmartTeam.Application.DTOs;
 using SmartTeam.Domain.Entities;
 using SmartTeam.Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SmartTeam.Application.Services;
 
@@ -13,8 +14,20 @@ public class OrderService : IOrderService
     private readonly IProductService _productService;
     private readonly ILoyaltyService _loyaltyService;
     private readonly IInstallmentService _installmentService;
+    private readonly IAzerpostService _azerpostService;
+    private readonly IExpargoService _expargoService;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
 
-    public OrderService(IUnitOfWork unitOfWork, IMapper mapper, ICartService cartService, IProductService productService, ILoyaltyService loyaltyService, IInstallmentService installmentService)
+    public OrderService(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ICartService cartService,
+        IProductService productService,
+        ILoyaltyService loyaltyService,
+        IInstallmentService installmentService,
+        IAzerpostService azerpostService,
+        IExpargoService expargoService,
+        IServiceScopeFactory serviceScopeFactory)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
@@ -22,6 +35,9 @@ public class OrderService : IOrderService
         _productService = productService;
         _loyaltyService = loyaltyService;
         _installmentService = installmentService;
+        _azerpostService = azerpostService;
+        _expargoService = expargoService;
+        _serviceScopeFactory = serviceScopeFactory;
     }
 
     public async Task<OrderDto> CreateOrderFromCartAsync(Guid? userId, CreateOrderDto createOrderDto, CancellationToken cancellationToken = default)
@@ -93,6 +109,25 @@ public class OrderService : IOrderService
             finalAmount = installmentCalculation.TotalAmount;
         }
 
+        // ── Parse and validate ShippingMethod ───────────────────────────────────────
+        if (!Enum.TryParse<ShippingMethod>(createOrderDto.ShippingMethod, ignoreCase: true, out var shippingMethod))
+        {
+            throw new ArgumentException(
+                $"Invalid ShippingMethod '{createOrderDto.ShippingMethod}'. " +
+                "Accepted values: Azerpost, Expargo, FreeDelivery.");
+        }
+
+        // Expargo and FreeDelivery require contact details
+        if (shippingMethod == ShippingMethod.Expargo || shippingMethod == ShippingMethod.FreeDelivery)
+        {
+            if (string.IsNullOrWhiteSpace(createOrderDto.CustomerName))
+                throw new ArgumentException("CustomerName (Ad Soyad) is required for this delivery type.");
+            if (string.IsNullOrWhiteSpace(createOrderDto.CustomerPhone))
+                throw new ArgumentException("CustomerPhone is required for this delivery type.");
+            if (string.IsNullOrWhiteSpace(createOrderDto.ShippingAddress))
+                throw new ArgumentException("ShippingAddress (delivery address) is required for this delivery type.");
+        }
+
         // Create order
         var order = new Order
         {
@@ -114,8 +149,41 @@ public class OrderService : IOrderService
             CustomerPhone = createOrderDto.CustomerPhone,
             ShippingAddress = createOrderDto.ShippingAddress,
             Notes = createOrderDto.Notes,
+            // Azerpost delivery fields (kept as-is; ignored for Expargo/FreeDelivery)
+            DeliveryPostCode = createOrderDto.DeliveryPostCode,
+            UserPassport = createOrderDto.UserPassport,
+            TotalWeightKg = cartDto.TotalWeightKg,
+            PackageWeight = cartDto.TotalWeightKg > 0 ? cartDto.TotalWeightKg : (createOrderDto.PackageWeight > 0 ? createOrderDto.PackageWeight : 0.1m),
+            Fragile = createOrderDto.Fragile,
+            DeliveryType = (SmartTeam.Domain.Entities.AzerpostDeliveryType)createOrderDto.DeliveryType,
+            ShippingMethod = shippingMethod,
             CreatedAt = DateTime.UtcNow
         };
+
+        // ── Delivery fee calculation ─────────────────────────────────────────────
+        if (shippingMethod == ShippingMethod.Azerpost)
+        {
+            // Existing Azerpost flow: completely unchanged
+            var azerpostResult = await _azerpostService.CreateOrderWithFeeAsync(order, cancellationToken);
+            if (!string.IsNullOrEmpty(azerpostResult.TrackingId))
+            {
+                order.AzerpostOrderId = azerpostResult.TrackingId;
+                order.DeliveryFee = azerpostResult.DeliveryFee;
+                order.TotalAmount += azerpostResult.DeliveryFee;
+            }
+        }
+        else if (shippingMethod == ShippingMethod.Expargo)
+        {
+            // Weight-based fee from admin-configured pricing rules
+            var feeResult = await _expargoService.CalculateDeliveryFeeAsync(cartDto.TotalWeightKg, cancellationToken);
+            order.DeliveryFee = feeResult.DeliveryFee;
+            order.TotalAmount += feeResult.DeliveryFee;
+        }
+        else // FreeDelivery
+        {
+            // No delivery fee; TotalAmount stays at cart total
+            order.DeliveryFee = 0m;
+        }
 
         // Handle Wallet Usage
         decimal walletDeduction = 0;
@@ -179,6 +247,12 @@ public class OrderService : IOrderService
              {
                  await _productService.ReduceStockAsync(cartItem.ProductId, cartItem.Quantity, cancellationToken);
              }
+
+             // Notify Azerpost that it has been paid (fully by wallet) — only if Azerpost delivery
+             if (!string.IsNullOrEmpty(order.AzerpostOrderId))
+             {
+                 await _azerpostService.UpdateVendorPaymentStatusAsync(order.AzerpostOrderId, true, cancellationToken);
+             }
         }
 
         // Clear cart after order creation
@@ -221,36 +295,79 @@ public class OrderService : IOrderService
 
     public async Task<OrderDto> UpdateOrderStatusAsync(Guid orderId, OrderStatus status, CancellationToken cancellationToken = default)
     {
-        var order = await _unitOfWork.Repository<Order>().GetByIdWithIncludesAsync(orderId, o => o.OrderItems);
+        // Use GetByIdAsync (FindAsync) so EF returns the already-tracked entity if one exists in
+        // the current DbContext scope, avoiding the "entity with same key already tracked" conflict.
+        var order = await _unitOfWork.Repository<Order>().GetByIdAsync(orderId, cancellationToken);
         if (order == null)
         {
             throw new ArgumentException("Order not found");
         }
 
-        // Handle post-payment actions when transitioning to Paid status
+        // ── Step 1: Reduce stock ─────────────────────────────────────────────
         if (status == OrderStatus.Paid && order.Status != OrderStatus.Paid)
         {
-            // Reduce stock for all items
-            foreach (var item in order.OrderItems)
+            var orderItems = await _unitOfWork.Repository<OrderItem>()
+                .FindAsync(oi => oi.OrderId == orderId, cancellationToken);
+
+            foreach (var item in orderItems)
             {
-                await _productService.ReduceStockAsync(item.ProductId, item.Quantity, cancellationToken);
+                try
+                {
+                    await _productService.ReduceStockAsync(item.ProductId, item.Quantity, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[WARN] ReduceStockAsync failed for product {item.ProductId}: {ex.Message}");
+                }
             }
         }
 
-        // Award Loyalty Bonus (Idempotent check inside service allows safe retries)
-        if (status == OrderStatus.Paid)
-        {
-            await _loyaltyService.AwardBonusForOrderAsync(order.UserId, order.Id, order.TotalAmount, cancellationToken);
-        }
-
+        // ── Step 2: Save order status IMMEDIATELY with CancellationToken.None ─
+        // We MUST save before any external HTTP call (Azerpost) which can hang
+        // for 100 seconds and cause the request CancellationToken to fire,
+        // which would make SaveChangesAsync throw OperationCanceledException.
         order.Status = status;
         order.UpdatedAt = DateTime.UtcNow;
+        await _unitOfWork.SaveChangesAsync(CancellationToken.None);
 
-        _unitOfWork.Repository<Order>().Update(order);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        // ── Step 3: Side-effects AFTER the status is committed ───────────────
+        // All of these use CancellationToken.None to avoid being killed by
+        // an already-expired request token.
+        if (status == OrderStatus.Paid)
+        {
+            // Loyalty bonus
+            try
+            {
+                await _loyaltyService.AwardBonusForOrderAsync(order.UserId, order.Id, order.TotalAmount, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] AwardBonusForOrderAsync failed for order {orderId}: {ex.Message}");
+            }
+
+            // Notify Azerpost that payment is complete (Fire-and-forget background task)
+            if (!string.IsNullOrEmpty(order.AzerpostOrderId))
+            {
+                var azerpostOrderId = order.AzerpostOrderId;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = _serviceScopeFactory.CreateScope();
+                        var azerpostSvc = scope.ServiceProvider.GetRequiredService<IAzerpostService>();
+                        await azerpostSvc.UpdateVendorPaymentStatusAsync(azerpostOrderId, true, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[WARN] Background Azerpost update failed for package {azerpostOrderId}: {ex.Message}");
+                    }
+                });
+            }
+        }
 
         return await MapOrderToDto(order, cancellationToken);
     }
+
 
     public async Task LinkPaymentToOrderAsync(Guid orderId, Guid paymentId, CancellationToken cancellationToken = default)
     {
@@ -371,6 +488,27 @@ public class OrderService : IOrderService
         return orderDtos;
     }
 
+    public async Task<(string? TrackingId, string? ErrorMessage)> DispatchToAzerpostAsync(Guid orderId, CancellationToken cancellationToken = default)
+    {
+        var order = await _unitOfWork.Repository<Order>().GetByIdAsync(orderId, cancellationToken);
+        if (order == null)
+            throw new ArgumentException("Order not found");
+
+        if (!string.IsNullOrEmpty(order.AzerpostOrderId))
+            return (order.AzerpostOrderId, null); // Already dispatched
+
+        var azerpostResult = await _azerpostService.CreateOrderWithFeeAsync(order, cancellationToken);
+        if (!string.IsNullOrEmpty(azerpostResult.TrackingId))
+        {
+            order.AzerpostOrderId = azerpostResult.TrackingId;
+            order.DeliveryFee = azerpostResult.DeliveryFee;
+            order.UpdatedAt = DateTime.UtcNow;
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return (azerpostResult.TrackingId, azerpostResult.ErrorMessage);
+    }
+
     private async Task<string> GenerateOrderNumberAsync(CancellationToken cancellationToken)
     {
         // Generate order number: ORD-YYYYMMDD-XXXX
@@ -448,6 +586,16 @@ public class OrderService : IOrderService
             CustomerEmail = order.CustomerEmail,
             CustomerPhone = order.CustomerPhone,
             ShippingAddress = order.ShippingAddress,
+            WalletAmountUsed = order.WalletAmountUsed,
+            DeliveryPostCode = order.DeliveryPostCode,
+            UserPassport = order.UserPassport,
+            PackageWeight = order.PackageWeight,
+            TotalWeightKg = order.TotalWeightKg,
+            DeliveryFee = order.DeliveryFee,
+            Fragile = order.Fragile,
+            DeliveryType = (int)order.DeliveryType,
+            AzerpostOrderId = order.AzerpostOrderId,
+            ShippingMethod = order.ShippingMethod.ToString(),
             Notes = order.Notes,
             Items = orderItems.Select(oi => new OrderItemDto
             {

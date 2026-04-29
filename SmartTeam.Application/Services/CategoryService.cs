@@ -150,18 +150,26 @@ public class CategoryService : ICategoryService
 
     public async Task<CategoryDto> CreateCategoryAsync(CreateCategoryDto createCategoryDto, CancellationToken cancellationToken = default)
     {
-        var category = _mapper.Map<Category>(createCategoryDto);
-        
+        if (string.IsNullOrWhiteSpace(createCategoryDto.Name))
+            throw new ArgumentException("Category name cannot be empty.");
+
+        // Check for duplicate category name (case-insensitive, same parent level)
+        var duplicate = await _unitOfWork.Repository<Category>()
+            .FirstOrDefaultAsync(c => c.Name.ToLower() == createCategoryDto.Name.Trim().ToLower()
+                && c.ParentCategoryId == createCategoryDto.ParentCategoryId, cancellationToken);
+        if (duplicate != null)
+            throw new InvalidOperationException($"A category named '{createCategoryDto.Name.Trim()}' already exists at this level.");
+
         if (createCategoryDto.ParentCategoryId.HasValue)
         {
             var parentExists = await _unitOfWork.Repository<Category>()
                 .AnyAsync(c => c.Id == createCategoryDto.ParentCategoryId.Value && c.IsActive, cancellationToken);
-            
+
             if (!parentExists)
-            {
-                throw new ArgumentException("Parent category not found or inactive.");
-            }
+                throw new ArgumentException("Parent category not found or is inactive.");
         }
+
+        var category = _mapper.Map<Category>(createCategoryDto);
 
         await _unitOfWork.Repository<Category>().AddAsync(category, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -173,24 +181,28 @@ public class CategoryService : ICategoryService
     {
         var category = await _unitOfWork.Repository<Category>().GetByIdAsync(id, cancellationToken);
         if (category == null)
-        {
-            throw new ArgumentException("Category not found.");
-        }
+            throw new ArgumentException($"Category with ID '{id}' was not found.");
+
+        var newName = updateCategoryDto.Name.Trim();
+
+        // Check for duplicate name at same parent level (exclude current)
+        var duplicate = await _unitOfWork.Repository<Category>()
+            .FirstOrDefaultAsync(c => c.Name.ToLower() == newName.ToLower()
+                && c.ParentCategoryId == updateCategoryDto.ParentCategoryId
+                && c.Id != id, cancellationToken);
+        if (duplicate != null)
+            throw new InvalidOperationException($"A category named '{newName}' already exists at this level.");
 
         if (updateCategoryDto.ParentCategoryId.HasValue && updateCategoryDto.ParentCategoryId != category.ParentCategoryId)
         {
             var parentExists = await _unitOfWork.Repository<Category>()
                 .AnyAsync(c => c.Id == updateCategoryDto.ParentCategoryId.Value && c.IsActive, cancellationToken);
-            
+
             if (!parentExists)
-            {
-                throw new ArgumentException("Parent category not found or inactive.");
-            }
+                throw new ArgumentException("Parent category not found or is inactive.");
 
             if (updateCategoryDto.ParentCategoryId == id)
-            {
-                throw new ArgumentException("Category cannot be its own parent.");
-            }
+                throw new ArgumentException("A category cannot be its own parent.");
         }
 
         _mapper.Map(updateCategoryDto, category);
@@ -299,19 +311,25 @@ public class CategoryService : ICategoryService
     public async Task<CategoryDto> CreateCategoryWithImageAsync(CreateCategoryWithImageDto createCategoryDto, IFormFile imageFile, CancellationToken cancellationToken = default)
     {
         if (imageFile == null || imageFile.Length == 0)
-        {
             throw new ArgumentException("Image file is required.");
-        }
+
+        if (string.IsNullOrWhiteSpace(createCategoryDto.Name))
+            throw new ArgumentException("Category name cannot be empty.");
+
+        // Check for duplicate category name at same parent level (case-insensitive)
+        var duplicate = await _unitOfWork.Repository<Category>()
+            .FirstOrDefaultAsync(c => c.Name.ToLower() == createCategoryDto.Name.Trim().ToLower()
+                && c.ParentCategoryId == createCategoryDto.ParentCategoryId, cancellationToken);
+        if (duplicate != null)
+            throw new InvalidOperationException($"A category named '{createCategoryDto.Name.Trim()}' already exists at this level.");
 
         if (createCategoryDto.ParentCategoryId.HasValue)
         {
             var parentExists = await _unitOfWork.Repository<Category>()
                 .AnyAsync(c => c.Id == createCategoryDto.ParentCategoryId.Value && c.IsActive, cancellationToken);
-            
+
             if (!parentExists)
-            {
-                throw new ArgumentException("Parent category not found or inactive.");
-            }
+                throw new ArgumentException("Parent category not found or is inactive.");
         }
 
         var category = new Category
@@ -326,7 +344,6 @@ public class CategoryService : ICategoryService
             CreatedAt = DateTime.UtcNow
         };
 
-        // Upload image
         var imageUrl = await _fileUploadService.UploadFileAsync(imageFile, "categories");
         category.ImageUrl = imageUrl;
 

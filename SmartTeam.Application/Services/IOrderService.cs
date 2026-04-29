@@ -49,4 +49,10 @@ public interface IOrderService
     /// Get all orders with pagination (Admin only)
     /// </summary>
     Task<PagedResultDto<OrderDto>> GetAllOrdersPagedAsync(int page, int pageSize, string? status, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Manually dispatch an already-paid order to Azerpost and persist the returned tracking ID.
+    /// Returns the Azerpost tracking ID on success, null on failure.
+    /// </summary>
+    Task<(string? TrackingId, string? ErrorMessage)> DispatchToAzerpostAsync(Guid orderId, CancellationToken cancellationToken = default);
 }

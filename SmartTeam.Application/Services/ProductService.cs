@@ -122,7 +122,7 @@ public class ProductService : IProductService
     {
         if (string.IsNullOrWhiteSpace(categorySlug))
         {
-            throw new ArgumentException("Category slug cannot be null or empty.", nameof(categorySlug));
+            throw new ArgumentException("Kateqoriya slaqı boş ola bilməz.", nameof(categorySlug));
         }
 
         // Find category by slug
@@ -131,7 +131,7 @@ public class ProductService : IProductService
         
         if (category == null)
         {
-            throw new ArgumentException($"Category with slug '{categorySlug}' not found.");
+            throw new ArgumentException($"'{categorySlug}' slaqına malik kateqoriya tapılmadı.");
         }
 
         // Use existing method to get products by category ID
@@ -184,15 +184,19 @@ public class ProductService : IProductService
     public async Task<ProductDto?> GetProductByIdAsync(Guid id, UserRole? userRole = null, CancellationToken cancellationToken = default)
     {
         var product = await _unitOfWork.Repository<Product>().GetByIdWithIncludesAsync(id, p => p.Category, p => p.Images);
-        
-        if (product == null || !product.IsActive)
+
+        if (product == null)
+            return null;
+
+        // Admins can see inactive products; public users cannot
+        if (userRole != UserRole.Admin && !product.IsActive)
             return null;
 
         var productDto = _mapper.Map<ProductDto>(product);
-        
+
         var images = await _unitOfWork.Repository<ProductImage>()
             .FindAsync(pi => pi.ProductId == id, cancellationToken);
-        
+
         if (!images.Any() && !string.IsNullOrEmpty(product.ImageUrl))
         {
             var mainImageAsProductImage = new ProductImage
@@ -208,9 +212,9 @@ public class ProductService : IProductService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             images = new[] { mainImageAsProductImage };
         }
-        
+
         productDto.Images = _mapper.Map<List<ProductImageDto>>(images.OrderBy(i => i.SortOrder));
-        
+
         await PopulateCategoryBreadcrumbsForSingleProduct(productDto, cancellationToken);
         return productDto;
     }
@@ -218,15 +222,19 @@ public class ProductService : IProductService
     public async Task<ProductDto?> GetProductByIdAsync(Guid id, UserRole? userRole = null, Guid? userId = null, CancellationToken cancellationToken = default)
     {
         var product = await _unitOfWork.Repository<Product>().GetByIdWithIncludesAsync(id, p => p.Category, p => p.Images, p => p.Brand);
-        
-        if (product == null || !product.IsActive)
+
+        if (product == null)
+            return null;
+
+        // Admins can see inactive products; public users cannot
+        if (userRole != UserRole.Admin && !product.IsActive)
             return null;
 
         var productDto = _mapper.Map<ProductDto>(product);
-        
+
         var images = await _unitOfWork.Repository<ProductImage>()
             .FindAsync(pi => pi.ProductId == id, cancellationToken);
-        
+
         if (!images.Any() && !string.IsNullOrEmpty(product.ImageUrl))
         {
             var mainImageAsProductImage = new ProductImage
@@ -242,14 +250,12 @@ public class ProductService : IProductService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             images = new[] { mainImageAsProductImage };
         }
-        
+
         productDto.Images = _mapper.Map<List<ProductImageDto>>(images.OrderBy(i => i.SortOrder));
-        
+
         if (userId.HasValue)
-        {
             await ApplyFavoriteStatusToProduct(productDto, userId.Value, cancellationToken);
-        }
-        
+
         await PopulateCategoryBreadcrumbsForSingleProduct(productDto, cancellationToken);
         return productDto;
     }
@@ -296,7 +302,7 @@ public class ProductService : IProductService
         
         if (!categoryExists)
         {
-            throw new ArgumentException("Category not found or inactive.");
+            throw new ArgumentException("Kateqoriya tapılmadı və ya aktiv deyil.");
         }
 
         // Check if product with same name already exists
@@ -305,7 +311,7 @@ public class ProductService : IProductService
         
         if (existingProductName)
         {
-            throw new InvalidOperationException("A product with this name already exists.");
+            throw new InvalidOperationException("Bu adda məhsul artıq mövcuddur.");
         }
 
         var existingSku = await _unitOfWork.Repository<Product>()
@@ -313,7 +319,7 @@ public class ProductService : IProductService
         
         if (existingSku)
         {
-            throw new InvalidOperationException("A product with this SKU already exists.");
+            throw new InvalidOperationException("Bu SKU nömrəli məhsul artıq mövcuddur.");
         }
 
         var product = _mapper.Map<Product>(createProductDto);
@@ -336,7 +342,7 @@ public class ProductService : IProductService
         // Validate image file
         if (imageFile == null || imageFile.Length == 0)
         {
-            throw new ArgumentException("Image file is required.");
+            throw new ArgumentException("Şəkil faylı tələb olunur.");
         }
 
         var categoryExists = await _unitOfWork.Repository<Category>()
@@ -344,7 +350,7 @@ public class ProductService : IProductService
         
         if (!categoryExists)
         {
-            throw new ArgumentException("Category not found or inactive.");
+            throw new ArgumentException("Kateqoriya tapılmadı və ya aktiv deyil.");
         }
 
         // Check if product with same name already exists
@@ -353,7 +359,7 @@ public class ProductService : IProductService
         
         if (existingProductName)
         {
-            throw new InvalidOperationException("A product with this name already exists.");
+            throw new InvalidOperationException("Bu adda məhsul artıq mövcuddur.");
         }
 
         var existingSku = await _unitOfWork.Repository<Product>()
@@ -361,7 +367,7 @@ public class ProductService : IProductService
         
         if (existingSku)
         {
-            throw new InvalidOperationException("A product with this SKU already exists.");
+            throw new InvalidOperationException("Bu SKU nömrəli məhsul artıq mövcuddur.");
         }
 
         var product = new Product
@@ -442,7 +448,24 @@ public class ProductService : IProductService
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id, cancellationToken);
         if (product == null)
         {
-            throw new ArgumentException("Product not found.");
+            throw new ArgumentException("Məhsul tapılmadı.");
+        }
+
+        // Check if another product with same name already exists
+        var existingProductName = await _unitOfWork.Repository<Product>()
+            .AnyAsync(p => p.Name == updateProductDto.Name && p.Id != id, cancellationToken);
+        
+        if (existingProductName)
+        {
+            throw new InvalidOperationException("Bu adda məhsul artıq mövcuddur.");
+        }
+
+        var existingSku = await _unitOfWork.Repository<Product>()
+            .AnyAsync(p => p.Sku == updateProductDto.Sku && p.Id != id, cancellationToken);
+        
+        if (existingSku)
+        {
+            throw new InvalidOperationException("Bu SKU nömrəli məhsul artıq mövcuddur.");
         }
 
         if (updateProductDto.CategoryId != product.CategoryId)
@@ -452,7 +475,7 @@ public class ProductService : IProductService
             
             if (!categoryExists)
             {
-                throw new ArgumentException("Category not found or inactive.");
+                throw new ArgumentException("Kateqoriya tapılmadı və ya aktiv deyil.");
             }
         }
 
@@ -464,7 +487,7 @@ public class ProductService : IProductService
             
             if (!brandExists)
             {
-                throw new ArgumentException("Brand not found or inactive.");
+                throw new ArgumentException("Brend tapılmadı və ya aktiv deyil.");
             }
         }
 
@@ -482,7 +505,24 @@ public class ProductService : IProductService
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id, cancellationToken);
         if (product == null)
         {
-            throw new ArgumentException("Product not found.");
+            throw new ArgumentException("Məhsul tapılmadı.");
+        }
+
+        // Check if another product with same name already exists
+        var existingProductName = await _unitOfWork.Repository<Product>()
+            .AnyAsync(p => p.Name == updateProductDto.Name && p.Id != id, cancellationToken);
+        
+        if (existingProductName)
+        {
+            throw new InvalidOperationException("Bu adda məhsul artıq mövcuddur.");
+        }
+
+        var existingSku = await _unitOfWork.Repository<Product>()
+            .AnyAsync(p => p.Sku == updateProductDto.Sku && p.Id != id, cancellationToken);
+        
+        if (existingSku)
+        {
+            throw new InvalidOperationException("Bu SKU nömrəli məhsul artıq mövcuddur.");
         }
 
         if (updateProductDto.CategoryId != product.CategoryId)
@@ -492,7 +532,7 @@ public class ProductService : IProductService
             
             if (!categoryExists)
             {
-                throw new ArgumentException("Category not found or inactive.");
+                throw new ArgumentException("Kateqoriya tapılmadı və ya aktiv deyil.");
             }
         }
 
@@ -504,7 +544,7 @@ public class ProductService : IProductService
             
             if (!brandExists)
             {
-                throw new ArgumentException("Brand not found or inactive.");
+                throw new ArgumentException("Brend tapılmadı və ya aktiv deyil.");
             }
         }
 
@@ -538,7 +578,24 @@ public class ProductService : IProductService
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(id, cancellationToken);
         if (product == null)
         {
-            throw new ArgumentException("Product not found.");
+            throw new ArgumentException("Məhsul tapılmadı.");
+        }
+
+        // Check if another product with same name already exists
+        var existingProductName = await _unitOfWork.Repository<Product>()
+            .AnyAsync(p => p.Name == updateProductDto.Name && p.Id != id, cancellationToken);
+        
+        if (existingProductName)
+        {
+            throw new InvalidOperationException("Bu adda məhsul artıq mövcuddur.");
+        }
+
+        var existingSku = await _unitOfWork.Repository<Product>()
+            .AnyAsync(p => p.Sku == updateProductDto.Sku && p.Id != id, cancellationToken);
+        
+        if (existingSku)
+        {
+            throw new InvalidOperationException("Bu SKU nömrəli məhsul artıq mövcuddur.");
         }
 
         if (updateProductDto.CategoryId != product.CategoryId)
@@ -548,7 +605,7 @@ public class ProductService : IProductService
             
             if (!categoryExists)
             {
-                throw new ArgumentException("Category not found or inactive.");
+                throw new ArgumentException("Kateqoriya tapılmadı və ya aktiv deyil.");
             }
         }
 
@@ -560,7 +617,7 @@ public class ProductService : IProductService
             
             if (!brandExists)
             {
-                throw new ArgumentException("Brand not found or inactive.");
+                throw new ArgumentException("Brend tapılmadı və ya aktiv deyil.");
             }
         }
 
@@ -655,7 +712,7 @@ public class ProductService : IProductService
             // Validate file is PDF
             if (pdfFile.ContentType != "application/pdf")
             {
-                throw new ArgumentException("Only PDF files are allowed");
+                throw new ArgumentException("Yalnız PDF fayllarına icazə verilir");
             }
 
             // Check if product already has a PDF
@@ -1084,7 +1141,7 @@ public class ProductService : IProductService
                     if (!remainingNormalImages.Any())
                     {
                         System.Console.WriteLine($"[DeleteProductDetailImageByIdAsync] Cannot delete primary image - it's the last normal image for this product");
-                        throw new InvalidOperationException("Cannot delete the last primary image. Product must have at least one normal image.");
+                        throw new InvalidOperationException("Sonuncu əsas şəkli silmək mümkün deyil. Məhsulun ən azı bir normal şəkli olmalıdır.");
                     }
                     
                     System.Console.WriteLine($"[DeleteProductDetailImageByIdAsync] Primary normal image can be deleted. Remaining normal images: {remainingNormalImages.Count}");
@@ -1484,7 +1541,7 @@ public class ProductService : IProductService
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(createDto.ProductId, cancellationToken);
         if (product == null)
         {
-            throw new ArgumentException($"Product with ID {createDto.ProductId} not found.");
+            throw new ArgumentException($"ID-si {createDto.ProductId} olan məhsul tapılmadı.");
         }
 
         // Delete existing specifications for this product
@@ -1532,7 +1589,7 @@ public class ProductService : IProductService
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(productId, cancellationToken);
         if (product == null)
         {
-            throw new ArgumentException($"Product with ID {productId} not found.");
+            throw new ArgumentException($"ID-si {productId} olan məhsul tapılmadı.");
         }
 
         // Delete existing specifications for this product
@@ -1625,6 +1682,19 @@ public class ProductService : IProductService
             var recentDate = DateTime.UtcNow.AddDays(-30);
             products = products.Where(p => p.CreatedAt >= recentDate).OrderByDescending(p => p.CreatedAt);
             System.Console.WriteLine($"DEBUG: Products after recommended filter (last 30 days): {products.Count()}");
+        }
+
+        if (criteria.IsNew.HasValue && criteria.IsNew.Value)
+        {
+            var newDate = DateTime.UtcNow.AddDays(-10);
+            products = products.Where(p => p.CreatedAt >= newDate);
+            System.Console.WriteLine($"DEBUG: Products after new filter (last 10 days): {products.Count()}");
+        }
+        else if (criteria.IsNew.HasValue && !criteria.IsNew.Value)
+        {
+            var newDate = DateTime.UtcNow.AddDays(-10);
+            products = products.Where(p => p.CreatedAt < newDate);
+            System.Console.WriteLine($"DEBUG: Products after NOT new filter (older than 10 days): {products.Count()}");
         }
 
         if (!string.IsNullOrWhiteSpace(criteria.SearchTerm))
@@ -2147,242 +2217,10 @@ public class ProductService : IProductService
         catch (Exception ex)
         {
             await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-            throw new InvalidOperationException($"Failed to clean database: {ex.Message}", ex);
+            throw new InvalidOperationException($"Baza təmizlənərkən xəta baş verdi: {ex.Message}", ex);
         }
     }
 
-    public async Task AddAzerbaijaniCategoriesAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            // Check if beauty categories already exist
-            var existingCategories = await _unitOfWork.Repository<Category>().FindAsync(c => c.Name == "Makiyaj" || c.Name == "Üz Baxım", cancellationToken);
-            if (existingCategories.Any())
-            {
-                throw new InvalidOperationException("Azerbaijani beauty categories already exist in the database.");
-            }
-
-            var categories = new List<Category>();
-            var sortOrder = 1;
-
-            // 1. Makiyaj
-            var makiyajId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = makiyajId,
-                Name = "Makiyaj",
-                Slug = "makiyaj",
-                Description = "Makiyaj məhsulları",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            // Level 2 for Makiyaj
-            var makiyajSubcategories = new[]
-            {
-                ("Üz", "makiyaj-uz", new[] 
-                { 
-                    ("Tonal Krem", "tonal-krem"), ("Konsiler", "konsiler"), ("Primer (Baza)", "primer-baza"), 
-                    ("Fiksasiya Pudrası", "fiksasiya-pudrasi"), ("Bronzer", "bronzer"), ("Ənlik (Blush)", "enlik-blush"), 
-                    ("Haylayter", "haylayter"), ("Kontur", "kontur"), ("Fiksasiya Spreyi", "fiksasiya-spreyi")
-                }),
-                ("Göz", "makiyaj-goz", new[] 
-                { 
-                    ("Tuş (Maskara)", "tus-maskara"), ("Layner", "layner"), ("Göz Kölgəsi (tək / palet)", "goz-kolgesi-tek-palet"), 
-                    ("Qaş Məhsulları (qələm / gel / pomad)", "qas-mehsullari-qelem-gel-pomad"), ("Kiprik Baxımı / Serumlar", "kiprik-baximi-serumlar"), ("Göz Primeri", "goz-primeri")
-                }),
-                ("Dodaq", "makiyaj-dodaq", new[] 
-                { 
-                    ("Pomada", "pomada"), ("Maye Pomada", "maye-pomada"), ("Dodaq Qələmi", "dodaq-qelemi"), ("Dodaq Parıldadıcısı", "dodaq-parildadicisi")
-                }),
-                ("Makiyaj Alətləri", "makiyaj-aletleri-sub", new[] 
-                { 
-                    ("Fırçalar", "fircalar-makiyaj"), ("Süngərlər / Aplikatorlar", "sungerler-aplikatorlar"), ("Makiyaj Çantaları & Orqanayzerlər", "makiyaj-cantalari-orqanayzerler")
-                }),
-                ("Makiyaj Setləri", "makiyaj-setleri", new[] 
-                { 
-                    ("Üz Setləri", "uz-setleri"), ("Göz Setləri", "goz-setleri"), ("Dodaq Setləri", "dodaq-setleri")
-                })
-            };
-
-            foreach (var (name, slug, level3Items) in makiyajSubcategories)
-            {
-                var parent2Id = Guid.NewGuid();
-                categories.Add(new Category
-                {
-                    Id = parent2Id,
-                    Name = name,
-                    Slug = slug,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == makiyajId) + 1,
-                    ParentCategoryId = makiyajId,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-                foreach (var (l3Name, l3Slug) in level3Items)
-                {
-                    categories.Add(new Category
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = l3Name,
-                        Slug = l3Slug,
-                        IsActive = true,
-                        SortOrder = categories.Count(c => c.ParentCategoryId == parent2Id) + 1,
-                        ParentCategoryId = parent2Id,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-            }
-
-            // 2. Üz Baxım
-            var uzBaximiId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = uzBaximiId,
-                Name = "Üz Baxım",
-                Slug = "uz-baxim",
-                Description = "Üz qulluq məhsulları",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            var uzBaximiSubcategories = new[]
-            {
-                ("Təmizləmə", "uz-temizleme", new[] { ("Üz Yuyucular (gel / krem / yağ / balm)", "uz-yuyucular-gel-krem-yag-balm"), ("Miselyar Su", "miselyar-su"), ("Makiyaj Təmizləyiciləri", "makiyaj-temizleyicileri") }),
-                ("Toniklər", "uz-tonikler", new[] { ("Toniklər", "tonikler") }),
-                ("Müalicə", "uz-mualice", new[] { ("Serumlar", "serumlar"), ("Hədəf Müalicələr (akne, ləkə və s.)", "hedef-mualiceler-akne-leke"), ("Retinoid / Retinol", "retinoid-retinol"), ("Vitamin C", "vitamin-c"), ("Eksfoliantlar (AHA / BHA / PHA)", "eksfoliantlar-aha-bha-pha") }),
-                ("Nəmləndirmə", "uz-nemlendirme", new[] { ("Üz Nəmləndiriciləri", "uz-nemlendiricileri"), ("Üz Yağları", "uz-yaglari"), ("Gecə Kremi", "gece-kremi") }),
-                ("Xüsusi Qulluq", "uz-xususi-qulluq", new[] { ("Göz Kremi", "goz-kremi"), ("Dodaq Müalicələri", "dodaq-mualiceleri"), ("Maskalar (sheet / gil / overnight)", "maskalar-sheet-gil-overnight"), ("Pilinqlər", "pilinqler") }),
-                ("Günəş Qorunması", "gunes-qorunmasi", new[] { ("Günəş Kremi (üz üçün)", "gunes-kremi-uz-ucun") })
-            };
-
-            foreach (var (name, slug, level3Items) in uzBaximiSubcategories)
-            {
-                var parent2Id = Guid.NewGuid();
-                categories.Add(new Category
-                {
-                    Id = parent2Id,
-                    Name = name,
-                    Slug = slug,
-                    IsActive = true,
-                    SortOrder = categories.Count(c => c.ParentCategoryId == uzBaximiId) + 1,
-                    ParentCategoryId = uzBaximiId,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-                foreach (var (l3Name, l3Slug) in level3Items)
-                {
-                    categories.Add(new Category
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = l3Name,
-                        Slug = l3Slug,
-                        IsActive = true,
-                        SortOrder = categories.Count(c => c.ParentCategoryId == parent2Id) + 1,
-                        ParentCategoryId = parent2Id,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-            }
-
-            // 3. Ətir
-            var etirId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = etirId,
-                Name = "Ətir",
-                Slug = "etir",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Qadın Ətirləri", Slug = "qadin-etirleri", IsActive = true, ParentCategoryId = etirId, CreatedAt = DateTime.UtcNow });
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Kişi Ətirləri", Slug = "kisi-etirleri", IsActive = true, ParentCategoryId = etirId, CreatedAt = DateTime.UtcNow });
-
-            // 4. Saç Baxım
-            var sacBaximiId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = sacBaximiId,
-                Name = "Saç Baxım",
-                Slug = "sac-baxim",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Şampun", Slug = "sampun", IsActive = true, ParentCategoryId = sacBaximiId, CreatedAt = DateTime.UtcNow });
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Kondisioner", Slug = "kondisioner", IsActive = true, ParentCategoryId = sacBaximiId, CreatedAt = DateTime.UtcNow });
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Saç Maskaları", Slug = "sac-maskalari", IsActive = true, ParentCategoryId = sacBaximiId, CreatedAt = DateTime.UtcNow });
-
-            // 5. Bədən Baxım
-            var bedenBaximiId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = bedenBaximiId,
-                Name = "Bədən Baxım",
-                Slug = "beden-baxim",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            var bedenSub = new[] 
-            { 
-                ("Duş Geli / Bədən Yuyucu", "dus-geli"), ("Bədən Skrabı", "beden-skrabi"), 
-                ("Bədən Losyonu & Kremi", "beden-losyonu-kremi"), ("Bədən Yağları", "beden-yaglari"), 
-                ("Əl Qulluğu", "el-qullugu"), ("Ayaq Qulluğu", "ayaq-qullugu"), 
-                ("Dezodorantlar", "dezodorantlar"), ("Bədən Ətirləri", "beden-etirleri") 
-            };
-
-            foreach (var (name, slug) in bedenSub)
-            {
-                categories.Add(new Category { Id = Guid.NewGuid(), Name = name, Slug = slug, IsActive = true, ParentCategoryId = bedenBaximiId, CreatedAt = DateTime.UtcNow });
-            }
-
-            // 6. Makiyaj Alətləri (Top level)
-            var aletlerId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = aletlerId,
-                Name = "Makiyaj Alətləri",
-                Slug = "makiyaj-aletleri",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Fırçalar", Slug = "fircalar", IsActive = true, ParentCategoryId = aletlerId, CreatedAt = DateTime.UtcNow });
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Süngərlər", Slug = "sungerler", IsActive = true, ParentCategoryId = aletlerId, CreatedAt = DateTime.UtcNow });
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Güzgülər", Slug = "guzguler", IsActive = true, ParentCategoryId = aletlerId, CreatedAt = DateTime.UtcNow });
-
-            // 7. Setlər & Hədiyyələr
-            var setlerId = Guid.NewGuid();
-            categories.Add(new Category
-            {
-                Id = setlerId,
-                Name = "Setlər & Hədiyyələr",
-                Slug = "setler-ve-hediyyeler",
-                IsActive = true,
-                SortOrder = sortOrder++,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Hədiyyə Setləri", Slug = "hediyye-setleri", IsActive = true, ParentCategoryId = setlerId, CreatedAt = DateTime.UtcNow });
-            categories.Add(new Category { Id = Guid.NewGuid(), Name = "Advent Kalendarları", Slug = "advent-kalendarlari", IsActive = true, ParentCategoryId = setlerId, CreatedAt = DateTime.UtcNow });
-
-            // Add all categories to database
-            await _unitOfWork.Repository<Category>().AddRangeAsync(categories);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to add Azerbaijani categories: {ex.Message}", ex);
-        }
-    }
 
 
     private async Task PopulateCategoryBreadcrumbs(IEnumerable<ProductListDto> products, CancellationToken cancellationToken)
@@ -3354,7 +3192,6 @@ public class ProductService : IProductService
             // Or clamp at 0? Usually e-commerce tracks negative for backorders.
             // Leaving as is.
             
-            _unitOfWork.Repository<Product>().Update(product);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
         }
     }

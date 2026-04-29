@@ -28,6 +28,9 @@ public class Product
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
     
+    /// <summary>Weight in kg used for Azerpost shipping calculation. Default 0.1 kg.</summary>
+    public decimal WeightKg { get; set; } = 0.1m;
+    
     // Images
     public ICollection<ProductImage> Images { get; set; } = new List<ProductImage>();
     

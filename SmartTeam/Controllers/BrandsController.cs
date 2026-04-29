@@ -17,9 +17,7 @@ public class BrandsController : ControllerBase
         _brandService = brandService;
     }
 
-    /// <summary>
-    /// Get all brands
-    /// </summary>
+    /// <summary>Get all active brands (Public).</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<BrandDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -27,18 +25,36 @@ public class BrandsController : ControllerBase
     {
         try
         {
-            var brands = await _brandService.GetAllBrandsAsync(cancellationToken);
+            var brands = await _brandService.GetAllBrandsAsync(includeInactive: false, cancellationToken);
             return Ok(brands);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(500, new { error = "Failed to retrieve brands.", message = "Please try again later or contact support if the issue persists." });
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to retrieve brands. Please try again later or contact support." });
         }
     }
 
-    /// <summary>
-    /// Get brand by ID
-    /// </summary>
+    /// <summary>Get all brands including inactive (Admin only).</summary>
+    [HttpGet("admin")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(IEnumerable<BrandDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<IEnumerable<BrandDto>>> GetBrandsAdmin(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var brands = await _brandService.GetAllBrandsAsync(includeInactive: true, cancellationToken);
+            return Ok(brands);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to retrieve brands. Please try again later or contact support." });
+        }
+    }
+
+    /// <summary>Get brand by ID (Public). Cannot retrieve inactive brands.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(BrandDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -47,16 +63,37 @@ public class BrandsController : ControllerBase
     {
         try
         {
-            var brand = await _brandService.GetBrandByIdAsync(id, cancellationToken);
+            var brand = await _brandService.GetBrandByIdAsync(id, includeInactive: false, cancellationToken);
             if (brand == null)
-            {
-                return NotFound(new { error = "Brand not found.", message = "The requested brand could not be found." });
-            }
+                return NotFound(new { error = "Brand not found.", message = $"No brand with ID '{id}' could be found." });
             return Ok(brand);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(500, new { error = "Failed to retrieve brand.", message = "Please try again later or contact support if the issue persists." });
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to retrieve brand. Please try again later or contact support." });
+        }
+    }
+
+    /// <summary>Get brand by ID including inactive (Admin only).</summary>
+    [HttpGet("admin/{id:guid}")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(BrandDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<BrandDto>> GetBrandByIdAdmin(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var brand = await _brandService.GetBrandByIdAsync(id, includeInactive: true, cancellationToken);
+            if (brand == null)
+                return NotFound(new { error = "Brand not found.", message = $"No brand with ID '{id}' could be found." });
+            return Ok(brand);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to retrieve brand. Please try again later or contact support." });
         }
     }
 
@@ -91,6 +128,7 @@ public class BrandsController : ControllerBase
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(BrandDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -99,25 +137,25 @@ public class BrandsController : ControllerBase
         try
         {
             if (createBrandDto == null)
-            {
-                return BadRequest(new { error = "Invalid brand data.", message = "Brand data cannot be null." });
-            }
+                return BadRequest(new { error = "Invalid request.", message = "Brand data cannot be null." });
 
             if (string.IsNullOrWhiteSpace(createBrandDto.Name))
-            {
-                return BadRequest(new { error = "Brand name required.", message = "Brand name is required." });
-            }
+                return BadRequest(new { error = "Validation failed.", message = "Brand name is required and cannot be empty." });
 
             var brand = await _brandService.CreateBrandAsync(createBrandDto, cancellationToken);
             return CreatedAtAction(nameof(GetBrandById), new { id = brand.Id }, brand);
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "Invalid brand data.", message = ex.Message });
+            return BadRequest(new { error = "Validation failed.", message = ex.Message });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            return StatusCode(500, new { error = "Failed to create brand.", message = "Please try again later or contact support if the issue persists." });
+            return Conflict(new { error = "Duplicate brand name.", message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to create brand. Please try again later or contact support." });
         }
     }
 
@@ -129,6 +167,7 @@ public class BrandsController : ControllerBase
     [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(BrandDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -141,31 +180,27 @@ public class BrandsController : ControllerBase
         try
         {
             if (string.IsNullOrWhiteSpace(name))
-            {
-                return BadRequest(new { error = "Brand name required.", message = "Brand name is required." });
-            }
+                return BadRequest(new { error = "Validation failed.", message = "Brand name is required and cannot be empty." });
 
             if (imageFile == null || imageFile.Length == 0)
-            {
-                return BadRequest(new { error = "Image file required.", message = "Brand logo image is required." });
-            }
+                return BadRequest(new { error = "Validation failed.", message = "Brand logo image is required." });
 
-            var createBrandDto = new CreateBrandWithImageDto
-            {
-                Name = name,
-                SortOrder = sortOrder
-            };
+            var createBrandDto = new CreateBrandWithImageDto { Name = name, SortOrder = sortOrder };
 
             var brand = await _brandService.CreateBrandWithImageAsync(createBrandDto, imageFile, cancellationToken);
             return CreatedAtAction(nameof(GetBrandById), new { id = brand.Id }, brand);
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = "Invalid brand data.", message = ex.Message });
+            return BadRequest(new { error = "Validation failed.", message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = "Duplicate brand name.", message = ex.Message });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "Failed to create brand.", message = ex.Message, details = ex.InnerException?.Message });
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to create brand. Please try again later or contact support.", details = ex.InnerException?.Message });
         }
     }
 
@@ -185,14 +220,10 @@ public class BrandsController : ControllerBase
         try
         {
             if (updateBrandDto == null)
-            {
-                return BadRequest(new { error = "Invalid brand data.", message = "Brand data cannot be null." });
-            }
+                return BadRequest(new { error = "Invalid request.", message = "Brand data cannot be null." });
 
             if (string.IsNullOrWhiteSpace(updateBrandDto.Name))
-            {
-                return BadRequest(new { error = "Brand name required.", message = "Brand name is required." });
-            }
+                return BadRequest(new { error = "Validation failed.", message = "Brand name is required and cannot be empty." });
 
             var brand = await _brandService.UpdateBrandAsync(id, updateBrandDto, cancellationToken);
             return Ok(brand);
@@ -201,9 +232,13 @@ public class BrandsController : ControllerBase
         {
             return NotFound(new { error = "Brand not found.", message = ex.Message });
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            return StatusCode(500, new { error = "Failed to update brand.", message = "Please try again later or contact support if the issue persists." });
+            return Conflict(new { error = "Duplicate brand name.", message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to update brand. Please try again later or contact support." });
         }
     }
 
@@ -233,9 +268,7 @@ public class BrandsController : ControllerBase
         try
         {
             if (string.IsNullOrWhiteSpace(brandData))
-            {
-                return BadRequest(new { error = "Brand data required.", message = "brandData field is required and must contain valid JSON" });
-            }
+                return BadRequest(new { error = "Invalid request.", message = "'brandData' field is required and must contain valid JSON." });
 
             UpdateBrandWithImageDto updateBrandDto;
             try
@@ -249,20 +282,15 @@ public class BrandsController : ControllerBase
             }
             catch (System.Text.Json.JsonException ex)
             {
-                return BadRequest(new { error = "Invalid JSON format.", message = $"Invalid JSON format for brandData: {ex.Message}" });
+                return BadRequest(new { error = "Invalid JSON format.", message = $"Could not parse 'brandData': {ex.Message}" });
             }
 
             if (updateBrandDto == null)
-            {
-                return BadRequest(new { error = "Failed to parse brand data.", message = "Failed to parse brand data" });
-            }
+                return BadRequest(new { error = "Invalid request.", message = "Failed to parse brand data. Ensure the JSON is well-formed." });
 
             if (string.IsNullOrWhiteSpace(updateBrandDto.Name))
-            {
-                return BadRequest(new { error = "Brand name required.", message = "Brand name is required." });
-            }
+                return BadRequest(new { error = "Validation failed.", message = "Brand name is required and cannot be empty." });
 
-            // Update brand with or without image
             var updatedBrand = await _brandService.UpdateBrandWithImageAsync(id, updateBrandDto, imageFile, cancellationToken);
             return Ok(updatedBrand);
         }
@@ -270,9 +298,13 @@ public class BrandsController : ControllerBase
         {
             return NotFound(new { error = "Brand not found.", message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = "Duplicate brand name.", message = ex.Message });
+        }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "Failed to update brand.", message = ex.Message });
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to update brand. Please try again later or contact support.", details = ex.InnerException?.Message });
         }
     }
 
@@ -303,27 +335,6 @@ public class BrandsController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Add predefined brands (Admin only)
-    /// </summary>
-    [HttpPost("add-predefined")]
-    [Authorize(Roles = "Admin")]
-    [ProducesResponseType(typeof(AddBrandsResultDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<AddBrandsResultDto>> AddPredefinedBrands(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _brandService.AddPredefinedBrandsAsync(cancellationToken);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { error = "Failed to add predefined brands.", message = "Please try again later or contact support if the issue persists." });
-        }
-    }
 
     /// <summary>
     /// Get all brands with pagination
@@ -350,32 +361,107 @@ public class BrandsController : ControllerBase
     }
 
     /// <summary>
-    /// Search brands by name
+    /// Paginated brand search with sorting and filters.
     /// </summary>
+    /// <remarks>
+    /// For authenticated admins, this endpoint also allows including inactive brands.
+    /// </remarks>
     [HttpGet("search")]
-    [ProducesResponseType(typeof(IEnumerable<BrandDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(BrandSearchResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<ActionResult<IEnumerable<BrandDto>>> SearchBrands([FromQuery] string q, CancellationToken cancellationToken)
+    public async Task<ActionResult<BrandSearchResultDto>> SearchBrands(
+        [FromQuery] BrandSearchRequestDto request,
+        CancellationToken cancellationToken)
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(q))
+            // Only admins can include inactive brands
+            if (!User.IsInRole("Admin"))
             {
-                return BadRequest(new { error = "Invalid search term.", message = "Search term is required and cannot be empty." });
+                request.IncludeInactive = false;
             }
 
-            if (q.Length < 1)
-            {
-                return BadRequest(new { error = "Search term too short.", message = "Search term must be at least 1 character long." });
-            }
-
-            var brands = await _brandService.SearchBrandsAsync(q, cancellationToken);
-            return Ok(brands);
+            var result = await _brandService.SearchBrandsPagedAsync(request, cancellationToken);
+            return Ok(result);
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
-            return StatusCode(500, new { error = "Failed to search brands.", message = "Please try again later or contact support if the issue persists." });
+            return BadRequest(new { error = "Invalid search parameters.", message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to search brands. Please try again later or contact support." });
+        }
+    }
+
+    /// <summary>
+    /// Paginated brand search with sorting and filters (public — active brands only).
+    /// </summary>
+    /// <remarks>
+    /// Query parameters:
+    /// - q: partial name match (optional — omitting returns all)
+    /// - page / pageSize: pagination (default 1 / 20)
+    /// - sortBy: name | sortorder | createdat | productcount (default: name)
+    /// - sortOrder: asc | desc (default: asc)
+    /// - hasProducts: true = brands with products only, false = empty brands only
+    /// </remarks>
+    [HttpGet("search/paged")]
+    [ProducesResponseType(typeof(BrandSearchResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<BrandSearchResultDto>> SearchBrandsPaged(
+        [FromQuery] BrandSearchRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Public endpoint always returns active brands only
+            request.IncludeInactive = false;
+
+            var result = await _brandService.SearchBrandsPagedAsync(request, cancellationToken);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "Invalid search parameters.", message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to search brands. Please try again later or contact support." });
+        }
+    }
+
+    /// <summary>
+    /// Paginated admin brand search — can include inactive brands (Admin only).
+    /// </summary>
+    /// <remarks>
+    /// Same parameters as /search/paged, plus:
+    /// - includeInactive: true = include inactive brands (default false)
+    /// </remarks>
+    [HttpGet("search/admin")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(BrandSearchResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<BrandSearchResultDto>> SearchBrandsAdmin(
+        [FromQuery] BrandSearchRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _brandService.SearchBrandsPagedAsync(request, cancellationToken);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = "Invalid search parameters.", message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Unexpected error.", message = "Failed to search brands. Please try again later or contact support." });
         }
     }
 }

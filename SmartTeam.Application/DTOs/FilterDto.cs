@@ -140,6 +140,7 @@ public class ProductFilterCriteriaDto
     public string? BrandSlug { get; set; }
     public bool? IsHotDeal { get; set; }
     public bool? IsRecommended { get; set; }
+    public bool? IsNew { get; set; }
     public string? SearchTerm { get; set; }
     public List<FilterCriteriaDto> FilterCriteria { get; set; } = new();
     public decimal? MinPrice { get; set; }

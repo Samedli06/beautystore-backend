@@ -55,6 +55,13 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         
         builder.Property(o => o.Notes)
             .HasMaxLength(1000);
+            
+        builder.Property(o => o.TotalWeightKg)
+            .HasColumnType("decimal(10,3)");
+            
+        builder.Property(o => o.DeliveryFee)
+            .HasColumnType("decimal(18,2)")
+            .HasDefaultValue(0);
         
         builder.Property(o => o.CreatedAt)
             .IsRequired();

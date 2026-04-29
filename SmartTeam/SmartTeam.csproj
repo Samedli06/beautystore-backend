@@ -29,6 +29,7 @@
     <Folder Include="wwwroot\uploads\categories\" />
     <Folder Include="wwwroot\uploads\downloads\" />
     <Folder Include="wwwroot\uploads\product-pdfs\" />
+    <Folder Include="wwwroot\_next\pzIkPBnYR35ENh8FOXFU0\" />
   </ItemGroup>
 
   <!-- CRITICAL: Exclude uploads folder from deployment to preserve server files -->

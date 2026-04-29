@@ -28,11 +28,13 @@ public class MappingProfile : Profile
         // Product mappings
         CreateMap<Product, ProductDto>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
+            .ForMember(dest => dest.IsNew, opt => opt.MapFrom(src => src.CreatedAt >= DateTime.UtcNow.AddDays(-10)))
             .ForMember(dest => dest.ImageUrl, opt => opt.MapFrom(src => 
                 (!string.IsNullOrEmpty(src.ImageUrl) && src.ImageUrl != "/images/placeholder.png") ? src.ImageUrl : "https://img.freepik.com/premium-vector/blue-car-flat-style-illustration-isolated-white-background_108231-795.jpg?semt=ais_hybrid&w=740&q=80"));
         CreateMap<Product, ProductListDto>()
             .ForMember(dest => dest.CategoryId, opt => opt.MapFrom(src => src.CategoryId))
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.Category.Name))
+            .ForMember(dest => dest.IsNew, opt => opt.MapFrom(src => src.CreatedAt >= DateTime.UtcNow.AddDays(-10)))
             .ForMember(dest => dest.PrimaryImageUrl, opt => opt.MapFrom(src => 
                 (!string.IsNullOrEmpty(src.ImageUrl) && src.ImageUrl != "/images/placeholder.png") ? src.ImageUrl :
                 src.Images.FirstOrDefault(i => i.IsPrimary && i.ImageUrl != "/images/placeholder.png") != null ? src.Images.FirstOrDefault(i => i.IsPrimary && i.ImageUrl != "/images/placeholder.png")!.ImageUrl : 

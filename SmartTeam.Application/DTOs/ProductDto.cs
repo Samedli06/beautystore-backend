@@ -26,8 +26,10 @@ public class ProductDto
     public string? DetailImageUrl { get; set; }
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
+    public decimal WeightKg { get; set; }
     public List<ProductImageDto> Images { get; set; } = new();
     public bool IsFavorite { get; set; } = false;
+    public bool IsNew { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
@@ -51,9 +53,11 @@ public class ProductListDto
     public string? BrandName { get; set; }
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
+    public decimal WeightKg { get; set; }
     public string? PrimaryImageUrl { get; set; }
     public bool IsFavorite { get; set; } = false;
     public List<ProductFilterDto> Filters { get; set; } = new();
+    public bool IsNew { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
@@ -80,6 +84,7 @@ public class CreateProductDto
     public Guid? BrandId { get; set; }
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
+    public decimal WeightKg { get; set; } = 0.1m;
 }
 
 public class CreateProductWithImageDto
@@ -94,6 +99,7 @@ public class CreateProductWithImageDto
     public Guid? BrandId { get; set; }
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
+    public decimal WeightKg { get; set; } = 0.1m;
 }
 
 public class UpdateProductDto
@@ -109,6 +115,7 @@ public class UpdateProductDto
     public Guid? BrandId { get; set; }
     public decimal Price { get; set; }
     public decimal? DiscountedPrice { get; set; }
+    public decimal WeightKg { get; set; }
     public List<string>? DetailImageUrls { get; set; } // For tracking existing detail images
 }
 

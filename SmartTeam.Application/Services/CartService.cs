@@ -53,13 +53,13 @@ public class CartService : ICartService
         var product = await _unitOfWork.Repository<Product>().GetByIdAsync(addToCartDto.ProductId, cancellationToken);
         if (product == null || !product.IsActive)
         {
-            throw new ArgumentException("Product not found or inactive.");
+            throw new ArgumentException("Məhsul tapılmadı və ya aktiv deyil.");
         }
 
         // Check stock availability
         if (product.StockQuantity < addToCartDto.Quantity)
         {
-            throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+            throw new InvalidOperationException($"Kifayət qədər stok yoxdur. Mövcud: {product.StockQuantity}");
         }
 
         // Use discounted price if available AND greater than 0, otherwise regular price
@@ -70,7 +70,7 @@ public class CartService : ICartService
         if (unitPrice <= 0)
         {
              // Fallback or error if price is not set correctly (though database should enforce it)
-             throw new InvalidOperationException("Product price is invalid.");
+             throw new InvalidOperationException("Məhsulun qiyməti yalnışdır.");
         }
 
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);
@@ -87,7 +87,7 @@ public class CartService : ICartService
             // Check stock for new quantity
             if (product.StockQuantity < newQuantity)
             {
-                throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}, In cart: {existingItem.Quantity}");
+                throw new InvalidOperationException($"Kifayət qədər stok yoxdur. Mövcud: {product.StockQuantity}, Səbətdə: {existingItem.Quantity}");
             }
 
             existingItem.Quantity = newQuantity;
@@ -122,7 +122,7 @@ public class CartService : ICartService
     {
         if (bulkAddToCartDto == null || !bulkAddToCartDto.Items.Any())
         {
-            throw new ArgumentException("Items are required for bulk add.");
+            throw new ArgumentException("Kütləvi əlavə etmək üçün məhsullar tələb olunur.");
         }
 
         var cart = await GetOrCreateCartAsync(userId, cancellationToken);
@@ -133,13 +133,13 @@ public class CartService : ICartService
             var product = await _unitOfWork.Repository<Product>().GetByIdAsync(item.ProductId, cancellationToken);
             if (product == null || !product.IsActive)
             {
-                throw new ArgumentException($"Product with ID {item.ProductId} not found or inactive.");
+                throw new ArgumentException($"{item.ProductId} ID-li məhsul tapılmadı və ya aktiv deyil.");
             }
 
             // Check stock availability
             if (product.StockQuantity < item.Quantity)
             {
-                throw new InvalidOperationException($"Insufficient stock for product {product.Name}. Available: {product.StockQuantity}");
+                throw new InvalidOperationException($"{product.Name} məhsulu üçün kifayət qədər stok yoxdur. Mövcud: {product.StockQuantity}");
             }
 
             // Use discounted price if available AND greater than 0, otherwise regular price
@@ -149,7 +149,7 @@ public class CartService : ICartService
 
             if (unitPrice <= 0)
             {
-                throw new InvalidOperationException($"Product {product.Name} price is invalid.");
+                throw new InvalidOperationException($"{product.Name} məhsulunun qiyməti yalnışdır.");
             }
 
             // Check if item already exists in cart
@@ -161,7 +161,7 @@ public class CartService : ICartService
                 var newQuantity = existingItem.Quantity + item.Quantity;
                 if (product.StockQuantity < newQuantity)
                 {
-                    throw new InvalidOperationException($"Insufficient stock for product {product.Name}. Available: {product.StockQuantity}, In cart: {existingItem.Quantity}");
+                    throw new InvalidOperationException($"{product.Name} məhsulu üçün kifayət qədər stok yoxdur. Mövcud: {product.StockQuantity}, Səbətdə: {existingItem.Quantity}");
                 }
 
                 existingItem.Quantity = newQuantity;
@@ -200,7 +200,7 @@ public class CartService : ICartService
 
         if (cartItem == null)
         {
-            throw new ArgumentException("Cart item not found.");
+            throw new ArgumentException("Səbət məhsulu tapılmadı.");
         }
 
         if (updateCartItemDto.Quantity <= 0)
@@ -214,7 +214,7 @@ public class CartService : ICartService
             var product = await _unitOfWork.Repository<Product>().GetByIdAsync(cartItem.ProductId, cancellationToken);
             if (product != null && product.StockQuantity < updateCartItemDto.Quantity)
             {
-                throw new InvalidOperationException($"Insufficient stock. Available: {product.StockQuantity}");
+                throw new InvalidOperationException($"Kifayət qədər stok yoxdur. Mövcud: {product.StockQuantity}");
             }
 
             cartItem.Quantity = updateCartItemDto.Quantity;
@@ -238,7 +238,7 @@ public class CartService : ICartService
 
         if (cartItem == null)
         {
-            throw new ArgumentException("Cart item not found.");
+            throw new ArgumentException("Səbət məhsulu tapılmadı.");
         }
 
         _unitOfWork.Repository<CartItem>().Remove(cartItem);
@@ -355,6 +355,7 @@ public class CartService : ICartService
         var cartItemDtos = new List<CartItemDto>();
         decimal totalDiscount = 0;
         decimal totalPriceBeforeDiscount = 0;
+        decimal totalWeightKg = 0;
 
         foreach (var item in cartItems)
         {
@@ -401,6 +402,9 @@ public class CartService : ICartService
                 // Let's use stored unit price for the total calculation to be safe with what's in DB
                 // But update "original price" context for UI to show savings.
 
+                // Add to weights
+                totalWeightKg += product.WeightKg * item.Quantity;
+
                 cartItemDtos.Add(new CartItemDto
                 {
                     Id = item.Id,
@@ -408,11 +412,13 @@ public class CartService : ICartService
                     ProductId = item.ProductId,
                     ProductName = product.Name,
                     ProductSku = product.Sku,
+                    ProductSlug = product.Slug,
                     ProductDescription = product.ShortDescription ?? product.Description,
                     ProductImageUrl = imageUrl,
                     Quantity = item.Quantity,
                     UnitPrice = item.UnitPrice,
                     TotalPrice = item.TotalPrice,
+                    WeightKg = product.WeightKg,
                     CreatedAt = item.CreatedAt
                 });
             }
@@ -452,6 +458,7 @@ public class CartService : ICartService
             TotalPriceBeforeDiscount = totalPriceBeforeDiscount,
             TotalDiscount = totalDiscount,
             TotalQuantity = cartItemDtos.Sum(i => i.Quantity),
+            TotalWeightKg = totalWeightKg,
             AppliedPromoCode = appliedPromoCodeName,
             PromoCodeDiscountPercentage = promoCodeDiscountPercentage,
             PromoCodeDiscountAmount = promoCodeDiscountAmount,
@@ -490,7 +497,7 @@ public class CartService : ICartService
 
         if (cart == null)
         {
-            throw new InvalidOperationException("Cart not found.");
+            throw new InvalidOperationException("Səbət tapılmadı.");
         }
 
         // Validate promo code
@@ -499,22 +506,22 @@ public class CartService : ICartService
 
         if (promoCodeEntity == null)
         {
-            throw new ArgumentException("Invalid promo code.");
+            throw new ArgumentException("Yalnış promo kod.");
         }
 
         if (!promoCodeEntity.IsActive)
         {
-            throw new InvalidOperationException("Promo code is not active.");
+            throw new InvalidOperationException("Promo kod aktiv deyil.");
         }
 
         if (promoCodeEntity.ExpirationDate.HasValue && promoCodeEntity.ExpirationDate.Value < DateTime.UtcNow)
         {
-            throw new InvalidOperationException("Promo code has expired.");
+            throw new InvalidOperationException("Promo kodun müddəti bitib.");
         }
 
         if (promoCodeEntity.UsageLimit.HasValue && promoCodeEntity.CurrentUsageCount >= promoCodeEntity.UsageLimit.Value)
         {
-            throw new InvalidOperationException("Promo code usage limit exceeded.");
+            throw new InvalidOperationException("Promo kodun istifadə limiti aşılıb.");
         }
 
         // Apply promo code to cart
@@ -534,7 +541,7 @@ public class CartService : ICartService
 
         if (cart == null)
         {
-            throw new InvalidOperationException("Cart not found.");
+            throw new InvalidOperationException("Səbət tapılmadı.");
         }
 
         // Remove promo code from cart
